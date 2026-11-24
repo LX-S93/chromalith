@@ -92,3 +92,25 @@ def test_invert_button_and_analysis(tmp_path, monkeypatch):
     assert w.analysis.img_table.rowCount() > 0
     w.dirty = False
     w.close()
+
+
+def test_export_original(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from PySide6.QtWidgets import QApplication, QFileDialog
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from chromalith.gui.main_window import MainWindow
+    img = tmp_path / "bild.png"
+    arr = np.tile(np.linspace(0, 255, 120, dtype=np.uint8), (80, 1))
+    Image.fromarray(arr).save(img)
+    w = MainWindow()
+    w._load_image(str(img))
+    w.project_path = tmp_path / "p.chroma"
+    w.save_project()
+    w._load_project(str(tmp_path / "p.chroma"))
+    out = tmp_path / "zurueck.png"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(out), ""))
+    w.export_original()
+    assert np.array_equal(np.asarray(Image.open(out).convert("L")), arr)
+    w.dirty = False
+    w.close()

@@ -121,6 +121,8 @@ class MainWindow(QMainWindow):
         self._act(m, "Projekt speichern unter …", lambda: self.save_project(True), QKeySequence.SaveAs)
         m.addSeparator()
         self._act(m, "Exportieren (STL + Farbwechsel-Liste) …", self.export, "Ctrl+E")
+        self._act(m, "Originalbild exportieren …", self.export_original)
+        self._act(m, "Vorschaubild exportieren …", self.export_preview)
         m.addSeparator()
         self._act(m, "Beenden", self.close, QKeySequence.Quit)
         f = self.menuBar().addMenu("&Filamente")
@@ -324,6 +326,33 @@ class MainWindow(QMainWindow):
         QApplication.restoreOverrideCursor()
         QMessageBox.information(self, "Export fertig", "Geschrieben:\n\n" + "\n".join(str(f) for f in files)
                                 + "\n\nDie Farbwechsel stehen in der _farbwechsel.txt.")
+
+    def export_original(self):
+        if self.project.image is None:
+            QMessageBox.information(self, "Kein Bild", "Das Projekt enthält kein Bild.")
+            return
+        default = str(Path(self._dir()) / f"{self.project.name}_original.png")
+        p, _ = QFileDialog.getSaveFileName(self, "Originalbild exportieren", default,
+                                           "PNG (*.png);;JPEG (*.jpg)")
+        if p:
+            img = self.project.image
+            if p.lower().endswith((".jpg", ".jpeg")):
+                img = img.convert("RGB")
+            img.save(p)
+            self.status.setText(f"Bild gespeichert: {p}")
+
+    def export_preview(self):
+        if self.project.image is None:
+            return
+        from PIL import Image as PILImage
+        import numpy as np
+        default = str(Path(self._dir()) / f"{self.project.name}_vorschau.png")
+        p, _ = QFileDialog.getSaveFileName(self, "Vorschaubild exportieren", default, "PNG (*.png)")
+        if p:
+            hm = self.project.build()
+            rgb = simulate_colors(hm, self.project.plan)
+            PILImage.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).save(p)
+            self.status.setText(f"Vorschau gespeichert: {p}")
 
     def manage_library(self):
         d = LibraryDialog(self.library, self, select_mode=False)
