@@ -70,10 +70,26 @@ jobs:
              url = "https://github.com/LX-S93/chromalith-releases/releases/download/${{ github.ref_name }}/Chromalith-windows.zip" } |
             ConvertTo-Json | Out-File -Encoding utf8NoBOM latest.json
           Get-Content latest.json
+      - name: Release Notes aus CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          $lines = Get-Content CHANGELOG.md -Encoding utf8
+          $out = @(); $on = $false
+          foreach ($l in $lines) {
+            if ($l -match '^## ') { if ($on) { break }; if ($l -match "^## $([regex]::Escape($ver))\b") { $on = $true; continue } }
+            if ($on) { $out += $l }
+          }
+          if (-not $out) { Write-Error "Kein Eintrag für $ver in CHANGELOG.md"; exit 1 }
+          $out | Out-File -Encoding utf8NoBOM release_notes.md
+          Get-Content release_notes.md
       - name: Release im privaten Repository
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: Chromalith ${{ github.ref_name }}
+          body_path: release_notes.md
           files: |
             Chromalith-windows.zip
             latest.json
