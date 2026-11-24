@@ -96,3 +96,4 @@ def optimize_plan(rgb: np.ndarray, filaments, base, step, min_h, max_h,
         if not improved:
             break
     return ColorPlan([ColorStop(fl, s) for fl, s in zip(filaments, starts)])
+

@@ -82,7 +82,10 @@ def auto_plan(filaments: Sequence[Filament], hm: HeightMap) -> ColorPlan:
     n = len(filaments)
     for i in range(1, n):
         q = int(layers[min(len(layers) - 1, int(len(layers) * i / n))])
+        # jedes weitere Filament bekommt mindestens 2 Schichten
+        cap = hi - 2 * (n - 1 - i) - 1
         layer = max(q + 1, lo + 1, stops[-1].start_layer + 1)
+        layer = max(min(layer, cap), stops[-1].start_layer + 1)
         stops.append(ColorStop(filaments[i], min(layer, hi)))
     return ColorPlan(stops)
 
