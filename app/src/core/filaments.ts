@@ -40,7 +40,22 @@ function fromForeign(d: any): Filament {
     material: String(d.Type ?? "PLA"), owned: Boolean(d.Owned) });
 }
 
+/** Farbe vereinheitlichen (#rrggbb). Ungültig -> null. */
+export function normalizeColor(c: unknown): string | null {
+  let s = String(c ?? "").trim().replace(/^#/, "");
+  if (/^[0-9a-f]{3}$/i.test(s)) s = s.split("").map((x) => x + x).join("");
+  if (/^[0-9a-f]{8}$/i.test(s)) s = s.slice(0, 6);
+  return /^[0-9a-f]{6}$/i.test(s) ? "#" + s.toLowerCase() : null;
+}
+
 export function parseFilaments(data: any): Filament[] {
+  return parseFilamentsRaw(data).flatMap((f) => {
+    const color = normalizeColor(f.color);
+    return color && Number.isFinite(f.td) ? [{ ...f, color }] : [];
+  });
+}
+
+function parseFilamentsRaw(data: any): Filament[] {
   if (data && data.format === LIBRARY_FORMAT) return (data.filaments ?? []).map(fromOwn);
   let items: any[] | undefined;
   if (Array.isArray(data)) items = data;

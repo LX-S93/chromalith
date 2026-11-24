@@ -3,18 +3,19 @@ import type { ColorStop, HeightSettings, Raster } from "./core";
 
 const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
 let nextId = 1;
-const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void; progress?: (f: number) => void }>();
 worker.onmessage = (ev) => {
   const p = pending.get(ev.data.id);
   if (!p) return;
+  if (ev.data.progress !== undefined) { p.progress?.(ev.data.progress); return; }
   pending.delete(ev.data.id);
   ev.data.ok ? p.resolve(ev.data.result) : p.reject(new Error(ev.data.error));
 };
 
-function call<T>(msg: any, transfer: Transferable[] = []): Promise<T> {
+function call<T>(msg: any, transfer: Transferable[] = [], progress?: (f: number) => void): Promise<T> {
   const id = nextId++;
   return new Promise<T>((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    pending.set(id, { resolve, reject, progress });
     worker.postMessage({ ...msg, id }, transfer);
   });
 }
@@ -34,3 +35,7 @@ export const preview = (settings: HeightSettings, stops: ColorStop[]) => call<Pr
 export const autoDistribute = (settings: HeightSettings, stops: ColorStop[]) => call<{ stops: ColorStop[] }>({ type: "auto", settings, stops });
 export const exportAll = (settings: HeightSettings, stops: ColorStop[], name: string) =>
   call<{ stl: ArrayBuffer; report: string; json: string; preview: ArrayBuffer; width: number; height: number }>({ type: "export", settings, stops, name });
+export const previewImage = (settings: HeightSettings, stops: ColorStop[], maxSide = 520) =>
+  call<{ width: number; height: number; preview: ArrayBuffer }>({ type: "preview", settings, stops, maxSide, lite: true });
+export const suggest = (settings: HeightSettings, stops: ColorStop[], library: ColorStop["filament"][], count: number, progress?: (f: number) => void) =>
+  call<{ stops: ColorStop[]; error: number; currentError: number | null }>({ type: "suggest", settings, stops, library, count }, [], progress);

@@ -10,6 +10,7 @@ export interface StackHost {
   add(): void;
   auto(): void;
   loadSet(): void;
+  suggest(): void;
   saveSet(): void;
 }
 
@@ -30,6 +31,8 @@ export class StackPanel {
       button("Nach unten", () => this.move(-1), { icon: "down" }),
       button("Automatisch verteilen", () => host.auto(), { icon: "magic", cls: "primary wide",
         title: "Sucht passende Wechsel-Schichten. Im farbtreuen Modus so, dass die Bildfarben am besten getroffen werden." }),
+      button("Filamente vorschlagen", () => host.suggest(), { icon: "library", cls: "wide",
+        title: "Sucht aus deiner Bibliothek das Filament-Set, das die Bildfarben am besten trifft." }),
       button("Nach Helligkeit sortieren", () => this.sortByBrightness(), { icon: "sort", cls: "wide" }),
       button("Set laden", () => host.loadSet(), { icon: "folder" }),
       button("Set speichern", () => host.saveSet(), { icon: "save" }));

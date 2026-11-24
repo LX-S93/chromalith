@@ -2,6 +2,19 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.5.0 – 2026-11-25
+
+### Neu
+- **Filamente vorschlagen:** Chromalith sucht aus deiner ganzen Bibliothek das Filament-Set,
+  mit dem die Farben des Bildes am besten getroffen werden: welche Filamente, in welcher
+  Reihenfolge und ab welcher Schicht. Zu finden rechts unter dem Stapel und in der Farbanalyse.
+  - Anzahl wählbar (2–10); bringt ein weiteres Filament nichts, werden weniger vorgeschlagen.
+  - Auf Wunsch nur aus Filamenten, die als „Vorhanden“ markiert sind.
+  - Vorher/Nachher-Vorschau nebeneinander mit mittlerer Farbabweichung, Übernehmen mit einem Klick.
+
+### Verbessert
+- Import ist robuster: Einträge mit kurzen (#abc) oder ungültigen Farbangaben werden korrigiert bzw. übersprungen.
+
 ## 0.4.0 – 2026-11-24
 
 ### Neu

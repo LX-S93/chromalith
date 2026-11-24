@@ -42,16 +42,22 @@ export function colorError(lab: Float32Array, stops: ColorStop[], base: number, 
   return nearestIndex(lab, labArray(colors), null);
 }
 
-/** Wechsel-Schichten für die gegebene Reihenfolge so wählen, dass die Bildfarben am besten
- *  getroffen werden (Koordinatenabstieg auf einer verkleinerten Kopie). */
-export function optimizePlan(rgb: Float32Array, w: number, h: number, filaments: Filament[], base: number, step: number,
-  minH: number, maxH: number, passes = 3, maxSide = 90): ColorStop[] {
-  const n = filaments.length;
-  if (!n) return [];
+/** Kleine Lab-Stichprobe eines Bildes (höchstens maxSide Punkte je Seite). */
+export function labSample(rgb: Float32Array, w: number, h: number, maxSide: number, alpha?: Float32Array): Float32Array {
   const f = Math.max(1, Math.ceil(Math.max(w, h) / maxSide));
   const sm: number[] = [];
-  for (let y = 0; y < h; y += f) for (let x = 0; x < w; x += f) { const i = (y * w + x) * 3; sm.push(rgb[i], rgb[i + 1], rgb[i + 2]); }
-  const lab = labArray(Float32Array.from(sm));
+  for (let y = 0; y < h; y += f) for (let x = 0; x < w; x += f) {
+    const p = y * w + x;
+    if (alpha && alpha[p] < 0.5) continue;
+    sm.push(rgb[p * 3], rgb[p * 3 + 1], rgb[p * 3 + 2]);
+  }
+  return labArray(Float32Array.from(sm));
+}
+
+/** Wechsel-Schichten (Koordinatenabstieg) für Filamente in fester Reihenfolge; liefert Startschichten und Fehler. */
+export function optimizeStarts(lab: Float32Array, filaments: Filament[], base: number, step: number, minH: number, maxH: number,
+  passes = 3): { starts: number[]; error: number } {
+  const n = filaments.length;
   const kMin = Math.max(1, Math.round((minH - base) / step) + 1);
   const kMax = Math.max(kMin + 1, Math.round((maxH - base) / step) + 1);
   let starts = [1, ...Array.from({ length: n - 1 }, (_, i) => kMin + Math.round(((i + 1) * (kMax - kMin)) / n))];
@@ -71,5 +77,14 @@ export function optimizePlan(rgb: Float32Array, w: number, h: number, filaments:
     }
     if (!improved) break;
   }
+  return { starts, error: best };
+}
+
+/** Wechsel-Schichten für die gegebene Reihenfolge so wählen, dass die Bildfarben am besten
+ *  getroffen werden (Koordinatenabstieg auf einer verkleinerten Kopie). */
+export function optimizePlan(rgb: Float32Array, w: number, h: number, filaments: Filament[], base: number, step: number,
+  minH: number, maxH: number, passes = 3, maxSide = 90): ColorStop[] {
+  if (!filaments.length) return [];
+  const { starts } = optimizeStarts(labSample(rgb, w, h, maxSide), filaments, base, step, minH, maxH, passes);
   return filaments.map((fl, i) => ({ filament: fl, start_layer: starts[i] }));
 }

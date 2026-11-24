@@ -142,3 +142,20 @@ it("Ordner-Import: mehrere Dateien, Duplikate werden zusammengeführt", () => {
   expect(r).toEqual({ added: 1, duplicates: 2 });
   expect(lib.find((f) => f.name === "Rot")!.td).toBe(2.5);
 });
+
+import { suggestFilaments, labSample, starterLibrary as lib0 } from "../src/core";
+it("Filament-Vorschlag trifft ein rot-blaues Bild mit roten und blauen Filamenten", () => {
+  const w = 40, h = 20, rgb = new Float32Array(w * h * 3);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 3, t = y / (h - 1);
+    if (x < w / 2) { rgb[i] = 0.85 * (1 - t) + 0.1 * t; rgb[i + 1] = 0.1; rgb[i + 2] = 0.1; }
+    else { rgb[i] = 0.1; rgb[i + 1] = 0.15; rgb[i + 2] = 0.8 * (1 - t) + 0.1 * t; }
+  }
+  const lab = labSample(rgb, w, h, 40);
+  const r = suggestFilaments(lab, rgb, lib0(), { count: 4, base: 0.16, step: 0.08, minH: 0.48, maxH: 2.24 })!;
+  expect(r.stops).toHaveLength(4);
+  const names = r.stops.map((s) => s.filament.name).join(",");
+  expect(names).toMatch(/Rot/);
+  expect(names).toMatch(/Blau/);
+  expect(r.error).toBeLessThan(30);
+});

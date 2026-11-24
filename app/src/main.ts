@@ -14,6 +14,7 @@ import { section, selectField, sliderField, switchField, type Field } from "./ui
 import { editFilament, openLibrary } from "./ui/library";
 import { findLibraryFolders, importFiles, readFolder } from "./ui/importer";
 import { StackPanel } from "./ui/stack";
+import { openSuggest } from "./ui/suggest";
 import { ImageView } from "./ui/view2d";
 import { ModelView } from "./ui/view3d";
 
@@ -192,6 +193,7 @@ const stack = new StackPanel({
     if (picked.length) stack.addFilaments(picked.map((f) => ({ ...f })));
   },
   auto: autoDistribute,
+  suggest: suggestFilaments,
   loadSet,
   saveSet: () => saveFile("set.json", serializeLibrary(state.stops.map((s) => s.filament)), [{ name: "Filament-Set", extensions: ["json"] }]),
 });
@@ -287,6 +289,17 @@ async function autoDistribute() {
   finally { if (!running) busy.classList.remove("on"); }
 }
 
+function suggestFilaments() {
+  if (!state.image) { toast("Bitte zuerst ein Bild öffnen."); return; }
+  openSuggest(state.settings, state.stops, library, (stops) => {
+    state.stops.splice(0, state.stops.length, ...stops);
+    state.settings.height_mode = "color";
+    fields.height_mode!.set("color"); syncMode();
+    stack.render(); markDirty(); rebuild();
+    toast("Vorgeschlagenes Filament-Set übernommen.", "ok");
+  });
+}
+
 function invertHeight() {
   const cur = state.settings.height_mode === "auto" ? state.result?.mode ?? "bright_high" : state.settings.height_mode;
   const next = cur === "bright_high" ? "dark_high" : "bright_high";
@@ -300,6 +313,7 @@ function refreshAnalysis() {
   const imgCard = h("div", { class: "card" }, h("h3", null, "Farben im Bild"),
     h("p", { class: "hint" }, "Hauptfarben mit Flächenanteil, dazu das ähnlichste Filament aus deiner Bibliothek."));
   if (!state.palette.length) imgCard.append(h("div", { class: "hint" }, "Noch kein Bild geladen."));
+  else imgCard.append(h("div", { style: { margin: "0 0 10px" } }, button("Passendes Filament-Set vorschlagen", suggestFilaments, { icon: "magic", cls: "primary small" })));
   for (const p of state.palette) {
     const { filament: f, distance } = nearestFilament(p.color, library);
     imgCard.append(h("div", { class: "bar-row" }, h("div", { class: "swatch", style: { background: p.color } }),

@@ -7,3 +7,4 @@ export * from "./colormatch";
 export * from "./analysis";
 export * from "./mesh";
 export * from "./project";
+export * from "./suggest";
