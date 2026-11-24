@@ -22,6 +22,9 @@ from typing import Callable, Optional
 
 from . import __version__
 
+# Update-Funktion ist vorbereitet, aber abgeschaltet, bis es einen öffentlichen Ablageort gibt.
+ENABLED = False
+
 # Öffentliche Ablage nur für die fertigen Programmdateien (der Quellcode bleibt privat).
 DEFAULT_MANIFEST_URL = "https://github.com/LX-S93/chromalith-releases/releases/latest/download/latest.json"
 USER_AGENT = f"Chromalith/{__version__}"

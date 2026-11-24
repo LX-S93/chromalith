@@ -77,13 +77,3 @@ jobs:
           files: |
             Chromalith-windows.zip
             latest.json
-      - name: Release in der öffentlichen Update-Ablage
-        if: startsWith(github.ref, 'refs/tags/v') && env.RELEASES_TOKEN != ''
-        uses: softprops/action-gh-release@v2
-        with:
-          repository: LX-S93/chromalith-releases
-          token: ${{ secrets.RELEASES_TOKEN }}
-          tag_name: ${{ github.ref_name }}
-          files: |
-            Chromalith-windows.zip
-            latest.json

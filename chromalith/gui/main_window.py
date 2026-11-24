@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, Q
                                QMessageBox, QScrollArea, QSlider, QSplitter, QTabWidget,
                                QVBoxLayout, QWidget)
 
-from .. import __version__
+from .. import __version__, updater
 from ..core.colorplan import ColorPlan, ColorStop, auto_plan, simulate_colors
 from ..core.export import export_all
 from ..core.heightmap import load_image
@@ -99,7 +99,8 @@ class MainWindow(QMainWindow):
         self._timer.timeout.connect(self.rebuild)
         self.updates = UpdateController(self)
         self._build_menu()
-        QTimer.singleShot(1500, lambda: self.updates.check(silent=True))
+        if updater.ENABLED:
+            QTimer.singleShot(1500, lambda: self.updates.check(silent=True))
 
         by_name = {f.name: f for f in self.library if f.brand == "Generisch"}
         start = [by_name.get(n) for n in ("Schwarz", "Grau dunkel", "Grau hell", "Weiß")]
@@ -130,11 +131,12 @@ class MainWindow(QMainWindow):
         self._act(f, "Filament zum Stapel hinzufügen …", self.add_filaments, "Ctrl+Shift+A")
         self._act(f, "Automatisch verteilen", self.auto_distribute, "Ctrl+Shift+D")
         h = self.menuBar().addMenu("&Hilfe")
-        self._act(h, "Nach Updates suchen …", lambda: self.updates.check(silent=False))
-        auto = self._act(h, "Beim Start nach Updates suchen", self.updates.toggle_auto)
-        auto.setCheckable(True)
-        auto.setChecked(self.updates.prefs.value("auto_update_check", "true") == "true")
-        h.addSeparator()
+        if updater.ENABLED:
+            self._act(h, "Nach Updates suchen …", lambda: self.updates.check(silent=False))
+            auto = self._act(h, "Beim Start nach Updates suchen", self.updates.toggle_auto)
+            auto.setCheckable(True)
+            auto.setChecked(self.updates.prefs.value("auto_update_check", "true") == "true")
+            h.addSeparator()
         self._act(h, "Über Chromalith", self.about)
 
     def _act(self, menu, text, slot, shortcut=None):
