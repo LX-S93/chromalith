@@ -12,6 +12,7 @@ import { decodeImage, isPng, isTauri, openFile, rgbaToPng, saveFile, saveSibling
 import { $, button, clear, confirmDialog, h, icon, modal, toast } from "./ui/dom";
 import { section, selectField, sliderField, switchField, type Field } from "./ui/fields";
 import { editFilament, openLibrary } from "./ui/library";
+import { findLibraryFolders, importFiles, readFolder } from "./ui/importer";
 import { StackPanel } from "./ui/stack";
 import { ImageView } from "./ui/view2d";
 import { ModelView } from "./ui/view3d";
@@ -62,6 +63,18 @@ async function importLegacyLibrary() {
     }
   } catch { /* keine alte Bibliothek */ }
   saveLibrary();
+  // Andere vorhandene Filament-Bibliotheken auf dem Rechner anbieten
+  const found = await findLibraryFolders().catch(() => [] as string[]);
+  if (!found.length) return;
+  const files = await readFolder(found[0]);
+  if (!files.length) return;
+  const ok = await confirmDialog("Filament-Bibliothek gefunden",
+    `Auf deinem Rechner liegt eine Filament-Bibliothek (${found[0]}). Sollen die Filamente mit Farbe und TD in Chromalith übernommen werden? Das geht auch später über „Filamente“ → „Importieren“.`,
+    "Übernehmen", "Nicht jetzt");
+  if (!ok) return;
+  store.set("importFolder", found[0]);
+  importFiles(library, files, `Aus dem Ordner ${found[0]}:`);
+  saveLibrary(); refreshAnalysis();
 }
 
 // ------------------------------------------------------------------ Aufbau
@@ -103,6 +116,7 @@ const topbar = h("header", { class: "topbar" },
   button("Bild öffnen", openImage, { icon: "image", title: "Bild öffnen (Strg+O)" }),
   button("Projekt öffnen", openProject, { icon: "folder", title: "Projekt öffnen (Strg+Umschalt+O)" }),
   button("Speichern", () => saveProject(false), { icon: "save", title: "Projekt speichern (Strg+S)" }),
+  button("Filamente", () => openLibrary(libHost).then(() => refreshAnalysis()), { icon: "library", title: "Filament-Bibliothek: suchen, bearbeiten, importieren (Strg+L)" }),
   h("div", { class: "spacer" }),
   modePill,
   button("Umkehren", invertHeight, { icon: "swap", cls: "ghost", title: "Höhe umkehren: helle oder dunkle Bildstellen hoch" }),

@@ -127,3 +127,18 @@ describe("Filamente, Analyse, Projekt", () => {
     expect(q.settings.shape).toBe("rect");
   });
 });
+
+import { mergeFilaments, parseFilamentFiles } from "../src/core";
+it("Ordner-Import: mehrere Dateien, Duplikate werden zusammengeführt", () => {
+  const a = { name: "a.json", text: JSON.stringify({ Filaments: [
+    { Brand: "X", Name: "Rot", Type: "PLA", Color: "#ff0000", Transmissivity: 2.5, uuid: "{1}" },
+    { Brand: "X", Name: "Weiß", Type: "PLA", Color: "#FFFFFF", Transmissivity: 5, uuid: "{2}" }] }) };
+  const b = { name: "set.fss", text: "﻿" + JSON.stringify({ filaments: [{ Brand: "X", Name: "Rot", Type: "PLA", Color: "#ff0000", Transmissivity: 2.5, uuid: "{1}" }] }) };
+  const c = { name: "defaults.json", text: JSON.stringify({ something: 1 }) };
+  const { filaments, used } = parseFilamentFiles([a, b, c, { name: "kaputt.json", text: "{" }]);
+  expect(used).toEqual(["a.json", "set.fss"]);
+  const lib = [makeFilament({ name: "Weiß", brand: "X", material: "PLA", color: "#ffffff", td: 4 })];
+  const r = mergeFilaments(lib, filaments);
+  expect(r).toEqual({ added: 1, duplicates: 2 });
+  expect(lib.find((f) => f.name === "Rot")!.td).toBe(2.5);
+});

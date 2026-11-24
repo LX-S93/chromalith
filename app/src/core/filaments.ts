@@ -56,3 +56,35 @@ export function serializeLibrary(list: Filament[]): string {
 export function starterLibrary(): Filament[] {
   return parseFilaments(starter);
 }
+
+/** Schlüssel für Duplikate: gleiche Marke, gleicher Name, gleiches Material, gleiche Farbe. */
+export const filamentKey = (f: Filament) =>
+  `${f.brand.trim().toLowerCase()}|${f.name.trim().toLowerCase()}|${f.material.trim().toLowerCase()}|${f.color.toLowerCase()}`;
+
+export interface MergeResult { added: number; duplicates: number }
+
+/** Fügt Filamente zur Bibliothek hinzu. Vorhandene (gleiche ID oder gleicher Schlüssel) bleiben unverändert. */
+export function mergeFilaments(library: Filament[], incoming: Filament[]): MergeResult {
+  const ids = new Set(library.map((f) => f.id));
+  const keys = new Set(library.map(filamentKey));
+  let added = 0, duplicates = 0;
+  for (const f of incoming) {
+    const k = filamentKey(f);
+    if (ids.has(f.id) || keys.has(k)) { duplicates++; continue; }
+    library.push(f); ids.add(f.id); keys.add(k); added++;
+  }
+  return { added, duplicates };
+}
+
+/** Liest beliebig viele Bibliotheks-/Set-Dateien; Dateien ohne Filamente werden übersprungen. */
+export function parseFilamentFiles(files: { name: string; text: string }[]) {
+  const filaments: Filament[] = [];
+  const used: string[] = [];
+  for (const f of files) {
+    try {
+      const list = parseFilaments(JSON.parse(f.text.replace(/^﻿/, "")));
+      if (list.length) { filaments.push(...list); used.push(f.name); }
+    } catch { /* keine Filament-Datei */ }
+  }
+  return { filaments, used };
+}

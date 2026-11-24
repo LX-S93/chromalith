@@ -1,7 +1,9 @@
 /** Filament-Bibliothek: suchen, anlegen, bearbeiten, löschen, importieren, exportieren, zum Stapel hinzufügen. */
-import { makeFilament, parseFilaments, serializeLibrary, filamentLabel, type Filament } from "../core";
-import { openFile, saveFile } from "../platform";
+import { makeFilament, serializeLibrary, filamentLabel, type Filament } from "../core";
+import { saveFile } from "../platform";
 import { button, clear, h, modal, toast, confirmDialog } from "./dom";
+import { filesFromDrop, findLibraryFolders, importFiles, pickFilesBrowser, pickFolderDesktop, readFolder } from "./importer";
+import { isTauri, store } from "../platform";
 
 export interface LibraryHost {
   library: Filament[];
@@ -87,22 +89,19 @@ export function openLibrary(host: LibraryHost, select = false): Promise<Filament
         if (!f || !(await confirmDialog("Filament löschen", `„${filamentLabel(f)}“ aus der Bibliothek löschen?`, "Löschen"))) return;
         host.library.splice(host.library.indexOf(f), 1); chosen.delete(f.id); host.saveLibrary(); refresh();
       }, { icon: "trash" }),
-      button("Importieren", async () => {
-        const file = await openFile([{ name: "Filament-Bibliothek", extensions: ["json", "fss"] }]);
-        if (!file) return;
-        try {
-          const list = parseFilaments(JSON.parse(new TextDecoder().decode(file.bytes)));
-          const ids = new Set(host.library.map((f) => f.id));
-          let n = 0;
-          for (const f of list) if (!ids.has(f.id)) { host.library.push(f); n++; }
-          host.saveLibrary(); refresh();
-          toast(`${n} Filamente importiert${list.length > n ? `, ${list.length - n} schon vorhanden` : ""}.`, "ok");
-        } catch (e: any) { toast("Import fehlgeschlagen: " + e.message, "err"); }
-      }, { icon: "upload" }),
+      button("Importieren", () => importDialog(host).then(refresh), { icon: "upload", title: "Filamente aus Bibliotheks- oder Set-Dateien (.json/.fss) oder einem ganzen Ordner übernehmen" }),
       button("Exportieren", () => saveFile("filamente.json", serializeLibrary(host.library), [{ name: "JSON", extensions: ["json"] }]), { icon: "download" }));
     const table = h("table", { class: "lib-table" },
       h("thead", null, h("tr", null, ...["", "Marke", "Name", "Material", "Farbe", "TD", "Vorh."].map((t) => h("th", null, t)))), tbody);
-    const content = h("div", null, tools, h("div", { style: { maxHeight: "56vh", overflow: "auto" } }, table));
+    const content = h("div", null, tools, h("div", { style: { maxHeight: "56vh", overflow: "auto" } }, table),
+      h("p", { class: "hint", style: { margin: "10px 0 0" } }, "Tipp: Bibliotheks-Dateien oder ganze Ordner hierher ziehen, um Filamente zu übernehmen."));
+    content.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); });
+    content.addEventListener("drop", async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (!e.dataTransfer) return;
+      const files = await filesFromDrop(e.dataTransfer);
+      importFiles(host.library, files, "Aus den abgelegten Dateien:"); host.saveLibrary(); refresh();
+    });
     let picked: Filament[] = [];
     const finish = () => { picked = host.library.filter((f) => chosen.has(f.id)); close(); };
     const addBtn: HTMLButtonElement | null = select ? button("Zum Stapel hinzufügen", finish, { cls: "primary" }) : null;
@@ -110,5 +109,50 @@ export function openLibrary(host: LibraryHost, select = false): Promise<Filament
       [count, h("div", { class: "spacer" }), button(select ? "Abbrechen" : "Schließen", () => close()), ...(addBtn ? [addBtn] : [])], false, () => resolve(picked));
     refresh();
     search.focus();
+  });
+}
+
+/** Import-Dialog: gefundene Ordner zur Auswahl, Ordner wählen, einzelne Dateien wählen. */
+export function importDialog(host: LibraryHost): Promise<void> {
+  return new Promise((resolve) => {
+    const list = h("div", { style: { display: "grid", gap: "8px", margin: "10px 0" } });
+    const searching = h("div", { class: "hint", style: { display: "flex", gap: "8px", alignItems: "center" } }, h("div", { class: "spinner" }), "Suche nach vorhandenen Filament-Bibliotheken …");
+    const run = async (label: string, get: () => Promise<{ files: { name: string; text: string }[]; folder?: string } | null>) => {
+      const r = await get();
+      if (!r) return;
+      close();
+      if (r.folder) store.set("importFolder", r.folder);
+      importFiles(host.library, r.files, label);
+      host.saveLibrary();
+    };
+    const fromFolder = (folder: string) => run(`Aus dem Ordner ${folder}:`, async () => ({ files: await readFolder(folder), folder }));
+    const content = h("div", { style: { lineHeight: "1.55" } },
+      h("p", { style: { marginTop: 0 } }, "Übernimmt Filamente mit Farbe und TD aus vorhandenen Bibliotheks- und Set-Dateien (.json, .fss), auch aus einem ganzen Ordner mit Unterordnern. Doppelte werden automatisch übersprungen."),
+      isTauri() ? searching : null, list,
+      h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
+        button("Ordner wählen …", async () => {
+          if (isTauri()) { const d = await pickFolderDesktop(); if (d) fromFolder(d); }
+          else run("Aus dem gewählten Ordner:", async () => ({ files: await pickFilesBrowser(true) }));
+        }, { icon: "folder" }),
+        button("Dateien wählen …", () => run("Aus den gewählten Dateien:", async () => {
+          if (!isTauri()) return { files: await pickFilesBrowser(false) };
+          const { open } = await import("@tauri-apps/plugin-dialog");
+          const { readFile } = await import("@tauri-apps/plugin-fs");
+          const ps = await open({ multiple: true, filters: [{ name: "Filament-Bibliothek / Set", extensions: ["json", "fss"] }] });
+          if (!ps) return null;
+          const arr = Array.isArray(ps) ? ps : [ps];
+          return { files: await Promise.all(arr.map(async (p) => ({ name: String(p).split(/[\\/]/).pop()!, text: new TextDecoder().decode(await readFile(String(p))) }))) };
+        }), { icon: "file" })));
+    const close = modal("Filamente importieren", content, [button("Schließen", () => close())], true, () => resolve());
+    if (isTauri()) findLibraryFolders().then((found) => {
+      searching.remove();
+      if (!found.length) { list.append(h("div", { class: "hint" }, "Keine Bibliothek automatisch gefunden. Wähle den Ordner bitte selbst.")); return; }
+      list.append(h("div", { class: "hint" }, "Gefunden:"));
+      for (const f of found) {
+        const b = button(f, () => fromFolder(f), { icon: "library", cls: "primary", title: "Alle Bibliotheken und Sets aus diesem Ordner übernehmen" });
+        b.style.whiteSpace = "normal"; b.style.height = "auto"; b.style.padding = "8px 12px"; b.style.textAlign = "left";
+        list.append(b);
+      }
+    });
   });
 }

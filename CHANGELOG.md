@@ -2,6 +2,18 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.4.0 – 2026-11-24
+
+### Neu
+- Knopf **Filamente** oben in der Leiste öffnet direkt die Filament-Bibliothek.
+- Bequemer Import vorhandener Filament-Bibliotheken mit Farbe und TD:
+  - **Importieren** sucht auf dem Rechner automatisch nach vorhandenen Bibliotheks-Ordnern
+    (Dokumente, Desktop, Downloads, Programme) und übernimmt mit einem Klick alle Bibliotheken
+    und Sets daraus, auch aus Unterordnern.
+  - Alternativ einen Ordner oder mehrere Dateien (.json, .fss) wählen oder einfach in die Bibliothek ziehen.
+  - Doppelte Filamente werden automatisch übersprungen, danach gibt es eine kurze Zusammenfassung.
+  - Beim ersten Start wird eine gefundene Bibliothek zur Übernahme angeboten.
+
 ## 0.3.0 – 2026-11-24
 
 Komplett neue, moderne Oberfläche. Die Bedienung ist gleich geblieben, alle Funktionen sind dabei.
