@@ -4,4 +4,7 @@ __pycache__/
 build/
 dist/
 .pytest_cache/
-examples/projekte/
+python/examples/projekte/
+node_modules/
+app/src-tauri/target/
+app/src-tauri/gen/

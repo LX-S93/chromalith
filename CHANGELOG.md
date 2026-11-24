@@ -2,6 +2,30 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.3.0 – 2026-11-24
+
+Komplett neue, moderne Oberfläche. Die Bedienung ist gleich geblieben, alle Funktionen sind dabei.
+
+### Neu
+- Dunkles, aufgeräumtes Design: Einstellungen links, Ansichten in der Mitte, Filament-Stapel rechts.
+- Höhen-Modus direkt oben umschaltbar (Auto / Hell hoch / Dunkel hoch / Farbtreu) und „Umkehren“-Knopf.
+  Im Auto-Modus steht dabei, welcher Modus gerade gilt.
+- Schichtbalken neben dem Stapel: Farbwechsel lassen sich mit der Maus nach oben/unten ziehen.
+- Berechnung läuft im Hintergrund, die Oberfläche bleibt beim Schieben der Regler flüssig.
+- 3D-Ansicht mit Höhen-Überhöhung (1–6×), Vorschau mit Zoom um den Mauszeiger und Positionsanzeige in mm.
+- Farbanalyse übersichtlicher mit Balken; Filamente unter 1 % Sichtbarkeit werden markiert.
+- Windows-Installer (`Chromalith-0.3.0-Setup.exe`, ohne Admin-Rechte) und weiterhin eine
+  einzelne `Chromalith.exe` im ZIP. Kein Python mehr nötig, Programm deutlich kleiner.
+- Derselbe Code läuft auch im Browser (Grundlage für die eigene Webseite).
+
+### Geändert
+- Technik: Desktop-App mit Tauri, Oberfläche und Rechenkern in TypeScript.
+  Die bisherige Python-Version liegt unter `python/` als Referenz.
+- Die Filament-Bibliothek speichert die App selbst. Die Bibliothek der alten Version wird beim ersten
+  Start automatisch übernommen.
+- `.chroma`-Projekte der alten Version lassen sich unverändert öffnen.
+- Die Kommandozeilen-Version (`Chromalith-CLI.exe`) gibt es vorerst nur noch in der alten Python-Version.
+
 ## 0.2.0 – 2026-11-24
 
 Erste veröffentlichte Version.

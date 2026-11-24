@@ -1,0 +1,160 @@
+{
+  "format": "chromalith-filaments",
+  "version": 1,
+  "note": "Grobe Schätzwerte. Für gute Ergebnisse die TD deiner eigenen Filamente messen oder beim Hersteller nachsehen.",
+  "filaments": [
+    {
+      "id": "8649aa64-1f80-52c8-a728-5e5d9bc93cda",
+      "name": "Weiß",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#f2f0eb",
+      "td": 4.5,
+      "owned": false
+    },
+    {
+      "id": "c41bffac-0682-5795-b9ca-9cb0890375b8",
+      "name": "Schwarz",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#111214",
+      "td": 0.5,
+      "owned": false
+    },
+    {
+      "id": "5a576caa-1dcd-56f5-bb8e-c128231ad8ab",
+      "name": "Grau hell",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#b8bbbf",
+      "td": 2.0,
+      "owned": false
+    },
+    {
+      "id": "25281738-7115-5be2-bd1e-35c8c79c8ef3",
+      "name": "Grau dunkel",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#5a5d62",
+      "td": 1.0,
+      "owned": false
+    },
+    {
+      "id": "167d39a7-6985-526a-97c4-555c59ed7d05",
+      "name": "Rot",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#c4202a",
+      "td": 2.2,
+      "owned": false
+    },
+    {
+      "id": "c3a1b249-3bfa-5fbd-9e15-250cdd727ba6",
+      "name": "Gelb",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#f5d10f",
+      "td": 5.0,
+      "owned": false
+    },
+    {
+      "id": "19ca3f72-d04b-5ac7-ae38-a2daf7dae5ed",
+      "name": "Orange",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#ef7a1a",
+      "td": 3.0,
+      "owned": false
+    },
+    {
+      "id": "3e5ef5d0-cc48-552c-8d2a-a3aa5643a4ca",
+      "name": "Blau",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#1f4fae",
+      "td": 1.6,
+      "owned": false
+    },
+    {
+      "id": "2a226760-9087-5209-b8ba-6fb17dd2be42",
+      "name": "Hellblau",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#5aa9e0",
+      "td": 3.0,
+      "owned": false
+    },
+    {
+      "id": "b2c66428-e424-588d-bfe3-c34193fdb6dc",
+      "name": "Grün",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#2a8a3e",
+      "td": 1.8,
+      "owned": false
+    },
+    {
+      "id": "0fdd164b-614f-5161-b751-8039b072e3d1",
+      "name": "Braun",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#6b4226",
+      "td": 1.2,
+      "owned": false
+    },
+    {
+      "id": "1383f74f-2a8d-56a3-b46d-d83f9eb1468d",
+      "name": "Magenta",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#c2367f",
+      "td": 2.5,
+      "owned": false
+    },
+    {
+      "id": "2bb772a7-7340-59cf-aab0-4a4425936774",
+      "name": "Cyan",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#0fa3b8",
+      "td": 2.8,
+      "owned": false
+    },
+    {
+      "id": "80d44624-4cfe-516d-ac5a-0f8324599263",
+      "name": "Beige",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#d9c3a0",
+      "td": 3.5,
+      "owned": false
+    },
+    {
+      "id": "ea6718dd-36a9-5264-9e1e-0431eac6fb59",
+      "name": "Violett",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#5b3a8c",
+      "td": 1.4,
+      "owned": false
+    },
+    {
+      "id": "4a148533-3967-5bf3-abc2-8fbaa5010723",
+      "name": "Gold",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#c99a2e",
+      "td": 3.0,
+      "owned": false
+    },
+    {
+      "id": "96611d86-d7ee-5435-bc3f-fe3526e8c766",
+      "name": "Dunkelblau",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#1b2a55",
+      "td": 0.9,
+      "owned": false
+    }
+  ]
+}

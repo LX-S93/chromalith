@@ -1,0 +1,87 @@
+/** Projekt (.chroma): Bild (eingebettet als PNG), Einstellungen, Filament-Stapel.
+ *  Kompatibel mit den .chroma-Dateien der bisherigen Python-Version. */
+import { colorError, layerPalette, nearestHeights, optimizePlan } from "./colormatch";
+import { isChromatic, filamentLuminance, type Filament } from "./filaments";
+import { buildHeightmap, normalizeSettings, prepareImage, type DigitRenderer, type EffectiveMode, type HeightMap, type HeightSettings } from "./heightmap";
+import { autoPlan, ordered, type ColorStop } from "./plan";
+import type { Raster } from "./raster";
+
+export const PROJECT_FORMAT = "chromalith-project";
+
+export interface Project {
+  name: string;
+  image: Raster | null;
+  /** PNG-Bytes des Originalbildes (unverändert, für Speichern/Export) */
+  imagePng: Uint8Array | null;
+  settings: HeightSettings;
+  stops: ColorStop[];
+}
+
+export function effectiveMode(p: Project): EffectiveMode {
+  const m = p.settings.height_mode;
+  if (m !== "auto") return m;
+  if (p.stops.some((s) => isChromatic(s.filament))) return "color";
+  const st = ordered(p.stops);
+  if (st.length < 2) return "bright_high";
+  return filamentLuminance(st[st.length - 1].filament) < filamentLuminance(st[0].filament) ? "dark_high" : "bright_high";
+}
+
+export function buildProject(p: Project, renderDigits?: DigitRenderer, settings: HeightSettings = p.settings): HeightMap {
+  if (!p.image) throw new Error("Kein Bild geladen.");
+  const mode = effectiveMode({ ...p, settings });
+  let colorFn;
+  if (mode === "color") {
+    const { heights, colors } = layerPalette(p.stops, settings.base_layer_mm, settings.layer_height_mm, settings.min_height_mm, settings.max_height_mm);
+    colorFn = (rgb: Float32Array) => nearestHeights(rgb, heights, colors);
+  }
+  return buildHeightmap(p.image, settings, { mode, colorFn, renderDigits });
+}
+
+/** Neue Verteilung der Wechsel-Schichten (Reihenfolge der Filamente bleibt). */
+export function autoDistribute(p: Project, settings: HeightSettings = p.settings, renderDigits?: DigitRenderer): ColorStop[] {
+  const fils = ordered(p.stops).map((s) => s.filament);
+  if (!p.image || !fils.length) return p.stops;
+  if (effectiveMode({ ...p, settings }) === "color") {
+    const { w, h, rgb } = prepareImage(p.image, settings);
+    return optimizePlan(rgb, w, h, fils, settings.base_layer_mm, settings.layer_height_mm, settings.min_height_mm, settings.max_height_mm);
+  }
+  const tmp: Project = { ...p, stops: fils.map((f) => ({ filament: f, start_layer: 1 })) };
+  return autoPlan(fils, buildProject(tmp, renderDigits, settings));
+}
+
+export { colorError };
+
+// ---------------------------------------------------------------- Speichern / Laden
+const b64encode = (bytes: Uint8Array) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+const b64decode = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+export function serializeProject(p: Project): string {
+  return JSON.stringify({
+    format: PROJECT_FORMAT, version: 1, name: p.name, settings: p.settings,
+    plan: p.stops.map((s) => ({ start_layer: s.start_layer, filament: s.filament })),
+    image_png: p.imagePng ? b64encode(p.imagePng) : null,
+  });
+}
+
+export interface ParsedProject {
+  name: string;
+  settings: HeightSettings;
+  stops: ColorStop[];
+  imagePng: Uint8Array | null;
+}
+
+export function parseProject(text: string): ParsedProject {
+  const d = JSON.parse(text);
+  if (d.format !== PROJECT_FORMAT) throw new Error("Keine Chromalith-Projektdatei.");
+  const stops: ColorStop[] = (d.plan ?? []).map((s: any) => ({
+    start_layer: Number(s.start_layer),
+    filament: { id: String(s.filament.id), name: String(s.filament.name), brand: String(s.filament.brand ?? ""),
+      material: String(s.filament.material ?? "PLA"), color: String(s.filament.color), td: Number(s.filament.td),
+      owned: Boolean(s.filament.owned) } as Filament,
+  }));
+  return { name: d.name ?? "Unbenannt", settings: normalizeSettings(d.settings), stops, imagePng: d.image_png ? b64decode(d.image_png) : null };
+}

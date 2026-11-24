@@ -5,26 +5,17 @@ schichtweise gedruckt wird. Weil dünne Filamentschichten durchscheinen, entsteh
 beim Drucken Farbverläufe und Schattierungen. Chromalith berechnet die Höhen, zeigt
 eine Vorschau der Farbmischung und erzeugt STL-Datei und Farbwechsel-Plan.
 
-Eigenständige Entwicklung (Python, Qt), Version 0.1 (MVP).
+Eigenständige Entwicklung. Ab Version 0.3 als Desktop-App (Tauri) mit Web-Oberfläche
+in TypeScript; derselbe Code läuft auch im Browser.
 
-## Windows-Programm (ohne Python)
+## Windows-Programm
 
-Bei jedem Push baut GitHub Actions automatisch die Windows-Version.
-Download: Repository → **Actions** → letzter Lauf „Build“ → Artefakt **Chromalith-windows**
-(bzw. bei Versions-Tags `v…` unter **Releases**). ZIP entpacken, `Chromalith.exe` starten.
-Im selben Ordner liegt `Chromalith-CLI.exe` für die Kommandozeile.
+Download unter **Releases** (bei jeder neuen Version automatisch gebaut):
 
-Selbst bauen: `start.bat` einmal ausführen, dann `build_exe.bat` → `dist\Chromalith\`.
+- `Chromalith-<Version>-Setup.exe` – Installation mit Startmenü-Eintrag (ohne Admin-Rechte),
+- `Chromalith-windows.zip` – eine einzelne `Chromalith.exe` zum direkt Starten.
 
-## Starten mit Python (für Entwicklung)
-
-1. Python 3.10 oder neuer installieren: <https://www.python.org/downloads/>
-   (bei der Installation **„Add python.exe to PATH“** anhaken).
-2. `start.bat` doppelklicken. Beim ersten Start wird eine eigene Umgebung (`.venv`)
-   angelegt und die Pakete werden geladen (dauert einmalig 1–2 Minuten).
-
-Optional eine eigenständige `.exe` bauen: `build_exe.bat` ausführen, Ergebnis liegt in
-`dist\Chromalith\Chromalith.exe`.
+Braucht die Microsoft-WebView2-Laufzeit, die bei Windows 10/11 dabei ist.
 
 ## Arbeitsablauf
 
@@ -35,7 +26,7 @@ Optional eine eigenständige `.exe` bauen: `build_exe.bat` ausführen, Ergebnis 
    „Hinzufügen …“ öffnet die Bibliothek, „Automatisch verteilen“ legt die Wechsel so,
    dass jedes Filament etwa gleich viel Bildfläche prägt. Danach die Startschichten
    von Hand feinjustieren und die Vorschau beobachten.
-4. **Datei → Exportieren** (Strg+E) schreibt:
+4. **Exportieren** oben rechts (Strg+E) schreibt:
    - `name.stl` – das Modell,
    - `name_farbwechsel.txt` – bei welcher Schicht/Höhe welches Filament kommt,
    - `name_farbwechsel.json` – dasselbe maschinenlesbar,
@@ -53,8 +44,8 @@ stehen über dem Bild und werden deshalb in der obersten Farbe gedruckt.
 
 ## Beispiele
 
-`python examples/make_motifs.py` erzeugt zwei eigene Testmotive, `python examples/build_examples.py`
-baut daraus fertige Projekte mit STL, Farbwechsel-Liste und Vorschau in `examples/projekte/`.
+In `python/examples/` liegen zwei eigene Testmotive; die fertigen `.chroma`-Projekte lassen
+sich in der neuen Version direkt öffnen.
 
 ## Filamente und TD
 
@@ -64,44 +55,48 @@ große TD = scheint lange durch (z. B. Weiß, Gelb).
 
 - Mitgeliefert ist eine kleine Startbibliothek mit **groben Schätzwerten**.
   Für gute Ergebnisse die TD der eigenen Filamente eintragen.
-- **Filamente → Bibliothek verwalten → Importieren** liest eigene Chromalith-Dateien
+- **⋯ → Filament-Bibliothek → Importieren** liest eigene Chromalith-Dateien
   sowie Bibliotheks- und Set-Dateien im verbreiteten JSON-Schema
   (`Brand / Name / Type / Color / Transmissivity`, auch `.fss`).
-- Die persönliche Bibliothek liegt unter `%APPDATA%\Chromalith\filament_bibliothek.json`.
+- Die persönliche Bibliothek speichert das Programm selbst. Die Bibliothek der alten
+  Python-Version wird beim ersten Start automatisch übernommen.
 
 Farbmodell der Vorschau: Die Schichten werden von unten nach oben übereinandergelegt;
 eine Lage der Dicke *t* deckt zu `1 − exp(−ln(20)·t/TD)` (bei *t* = TD also 95 %).
 Das ist eine Näherung – echte Drucke weichen je nach Licht und Filament ab.
 
-## Kommandozeile
-
-```
-python -m chromalith.cli bild.png --width 120 --filaments set.json -o ausgabe\modell
-python -m chromalith.cli projekt.chroma -o ausgabe\modell
-```
-
 ## Für Entwickler
 
+Voraussetzungen: Node.js 22, für die Desktop-App zusätzlich Rust (rustup).
+
 ```
-python -m venv .venv && .venv\Scripts\activate
-pip install -r requirements.txt pytest
-python -m pytest
+cd app
+npm install
+npm run dev          # Oberfläche im Browser: http://localhost:1420
+npm test             # Tests des Rechenkerns (vitest)
+npm run build        # statische Web-Version nach app/dist/
+npx tauri dev        # Desktop-App im Entwicklungsmodus
+npx tauri build      # Windows-Installer + Exe
 ```
 
 Aufbau:
 
-- `chromalith/core/` – Rechenkern ohne Oberfläche: `heightmap.py` (Bild → Höhen),
-  `mesh.py` (wasserdichtes Netz, STL), `filaments.py` (Bibliothek, Import),
-  `colorplan.py` (Farbwechsel, Simulation), `project.py`, `export.py`
-- `chromalith/gui/` – Qt-Oberfläche inkl. OpenGL-3D-Vorschau
-- `tests/` – Tests für Kern und Oberfläche
+- `app/src/core/` – Rechenkern ohne Oberfläche (TypeScript, keine Abhängigkeiten):
+  `heightmap.ts` (Bild → Höhen, Form/Uhr), `mesh.ts` (wasserdichtes Netz, STL),
+  `filaments.ts` (Bibliothek, Import), `plan.ts` (Farbwechsel, Simulation),
+  `colormatch.ts` (farbtreuer Modus), `analysis.ts`, `project.ts` (`.chroma`)
+- `app/src/worker.ts` – rechnet im Hintergrund, die Oberfläche bleibt flüssig
+- `app/src/ui/`, `app/src/main.ts` – Oberfläche, `app/src/platform.ts` – Dateien (Desktop/Browser)
+- `app/src-tauri/` – Desktop-Hülle (Rust/Tauri)
+- `python/` – bisherige Python/Qt-Version (bis 0.2.0), nur noch als Referenz
 
-## Aufbau für eine spätere Web-Version
+## Auf der eigenen Webseite
 
-`chromalith/core/` hängt nur von NumPy und Pillow ab, nicht von Qt. Damit kann derselbe
-Rechenkern später auch im Browser (Pyodide) oder hinter einer kleinen Web-API laufen.
+`npm run build` erzeugt in `app/dist/` eine statische Seite (HTML, JS, CSS) ohne Server-Teil.
+Den Ordner auf den Webspace kopieren und verlinken oder per `<iframe>` einbinden. Dateien
+werden dort als Download gespeichert, die Bibliothek im Browser des Besuchers.
 
-## Geplant (nach dem MVP)
+## Geplant
 
 - 3MF-Export mit eingebetteten Farbwechseln (Bambu Studio / Orca / PrusaSlicer)
 - Gegenlicht-Vorschau (Lithophane)
