@@ -3,7 +3,6 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -31,8 +30,6 @@ jobs:
       RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -52,29 +49,24 @@ jobs:
         with:
           name: Chromalith-windows
           path: Chromalith-windows.zip
-      - name: Version prüfen (Tag = chromalith/__init__.py)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Version ermitteln – neues Release nötig?
+        id: ver
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $v = python -c "import chromalith; print(chromalith.__version__)"
-          if ("v$v" -ne "${{ github.ref_name }}") { Write-Error "Tag ${{ github.ref_name }} passt nicht zu Version $v"; exit 1 }
-      - name: Update-Datei latest.json erzeugen
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: |
-          $sha = (Get-FileHash Chromalith-windows.zip -Algorithm SHA256).Hash.ToLower()
-          $ver = "${{ github.ref_name }}".TrimStart("v")
-          $msg = git tag -l --format='%(contents)' "${{ github.ref_name }}"
-          if (-not $msg) { $msg = "Neue Version $ver" }
-          @{ version = $ver; sha256 = $sha; notes = ($msg -join "`n");
-             url = "https://github.com/LX-S93/chromalith-releases/releases/download/${{ github.ref_name }}/Chromalith-windows.zip" } |
-            ConvertTo-Json | Out-File -Encoding utf8NoBOM latest.json
-          Get-Content latest.json
+          "version=$v" >> $env:GITHUB_OUTPUT
+          gh release view "v$v" -R "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) { "release=false" >> $env:GITHUB_OUTPUT; Write-Host "v$v gibt es schon" }
+          else { "release=true" >> $env:GITHUB_OUTPUT; Write-Host "Neues Release v$v" }
+          exit 0
       - name: Release Notes aus CHANGELOG.md
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.ver.outputs.release == 'true'
         shell: pwsh
         run: |
-          $ver = "${{ github.ref_name }}".TrimStart("v")
+          $ver = "${{ steps.ver.outputs.version }}"
           $lines = Get-Content CHANGELOG.md -Encoding utf8
           $out = @(); $on = $false
           foreach ($l in $lines) {
@@ -84,12 +76,12 @@ jobs:
           if (-not $out) { Write-Error "Kein Eintrag für $ver in CHANGELOG.md"; exit 1 }
           $out | Out-File -Encoding utf8NoBOM release_notes.md
           Get-Content release_notes.md
-      - name: Release im privaten Repository
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Release anlegen (Tag v<Version>)
+        if: steps.ver.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: Chromalith ${{ github.ref_name }}
+          tag_name: v${{ steps.ver.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Chromalith v${{ steps.ver.outputs.version }}
           body_path: release_notes.md
-          files: |
-            Chromalith-windows.zip
-            latest.json
+          files: Chromalith-windows.zip
