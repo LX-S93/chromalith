@@ -1,0 +1,21 @@
+[project]
+name = "chromalith"
+version = "0.1.0"
+description = "Farbige Reliefbilder aus Filament-Schichten für den 3D-Druck"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26", "pillow>=10.0", "PySide6>=6.6", "PyOpenGL>=3.1.7"]
+
+[project.scripts]
+chromalith-cli = "chromalith.cli:main"
+
+[project.gui-scripts]
+chromalith = "chromalith.app:main"
+
+[tool.setuptools.packages.find]
+include = ["chromalith*"]
+
+[tool.setuptools.package-data]
+chromalith = ["data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
