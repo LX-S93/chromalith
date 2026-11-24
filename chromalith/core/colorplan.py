@@ -73,6 +73,10 @@ def auto_plan(filaments: Sequence[Filament], hm: HeightMap) -> ColorPlan:
     lo, hi = hm.min_layer, hm.layer_count
     inner = hm.heights[hm.border_px:hm.heights.shape[0] - hm.border_px,
                        hm.border_px:hm.heights.shape[1] - hm.border_px] if hm.border_px else hm.heights
+    if hm.mask is not None:
+        b = hm.border_px
+        valid = hm.mask[b:hm.mask.shape[0] - b, b:hm.mask.shape[1] - b] if b else hm.mask
+        inner = inner[valid]
     layers = np.sort(layer_index(inner.ravel(), hm.base_layer_mm, hm.layer_height_mm))
     stops = [ColorStop(filaments[0], 1)]
     n = len(filaments)
@@ -100,7 +104,13 @@ def simulate_colors(hm: HeightMap, plan: ColorPlan, heights: np.ndarray | None =
         t = np.clip(np.minimum(h, z1) - z0, 0.0, None)
         a = 1.0 - np.exp(-OPACITY_K * t / max(fil.td, 1e-3))
         out = out * (1.0 - a[..., None]) + srgb_to_linear(fil.rgb) * a[..., None]
-    return linear_to_srgb(out).astype(np.float32)
+    res = linear_to_srgb(out).astype(np.float32)
+    if hm.mask is not None and heights is None:
+        res[~hm.mask] = BACKGROUND
+    return res
+
+
+BACKGROUND = np.array([0.17, 0.17, 0.17], np.float32)
 
 
 def plan_report(hm: HeightMap, plan: ColorPlan, title: str = "") -> str:

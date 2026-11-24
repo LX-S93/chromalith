@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox,
                                QHBoxLayout, QPushButton, QSlider, QVBoxLayout, QWidget)
 
-from ..core.heightmap import HEIGHT_MODES, LUMA_METHODS, HeightSettings
+from ..core.heightmap import HEIGHT_MODES, LUMA_METHODS, SHAPES, HeightSettings
 
 
 def dspin(lo, hi, step, decimals=2, suffix=" mm"):
@@ -80,6 +80,12 @@ class SettingsPanel(QWidget):
         ("pixel_size_mm", "Größe", "Rasterweite", slider(0.05, 1.0, 0.05)),
         ("border_mm", "Größe", "Rahmenbreite", slider(0, 20, 0.5, 1)),
         ("border_height_mm", "Größe", "Rahmenhöhe (0 = max.)", slider(0, 10, 0.08)),
+        ("shape", "Form", "Umriss", None),
+        ("hole_mm", "Form", "Mittelloch Ø", slider(0, 20, 0.5, 1)),
+        ("rim_mm", "Form", "Erhöhter Rand", slider(0, 15, 0.5, 1)),
+        ("clock_numbers", "Form", "Uhr-Ziffern 1–12", None),
+        ("numbers_mm", "Form", "Ziffernhöhe", slider(4, 40, 0.5, 1)),
+        ("raise_mm", "Form", "Rand/Ziffern über Bild", slider(0.08, 3, 0.08)),
         ("base_layer_mm", "Schichten", "Erste Schicht", slider(0.04, 0.4, 0.02)),
         ("layer_height_mm", "Schichten", "Schichthöhe", slider(0.04, 0.32, 0.02)),
         ("min_height_mm", "Schichten", "Minimale Höhe", slider(0.08, 5, 0.04)),
@@ -111,7 +117,12 @@ class SettingsPanel(QWidget):
                 box = QGroupBox(group)
                 groups[group] = QFormLayout(box)
                 layout.addWidget(box)
-            if name == "height_mode":
+            if name == "shape":
+                w = QComboBox()
+                for k, v in SHAPES.items():
+                    w.addItem(v, k)
+                w.currentIndexChanged.connect(self.changed)
+            elif name == "height_mode":
                 w = QComboBox()
                 for k, v in HEIGHT_MODES.items():
                     w.addItem(v, k)
@@ -121,7 +132,7 @@ class SettingsPanel(QWidget):
                 for k, v in LUMA_METHODS.items():
                     w.addItem(v, k)
                 w.currentIndexChanged.connect(self.changed)
-            elif name == "linearize":
+            elif name in ("linearize", "clock_numbers"):
                 w = QCheckBox()
                 w.toggled.connect(self.changed)
             else:
@@ -136,6 +147,8 @@ class SettingsPanel(QWidget):
         self.widgets["detail_mm"].setToolTip(
             "Bildpunkte, die kleiner sind als dieser Wert, werden entfernt (Median-Filter). "
             "Verhindert einzelne Zacken im Relief. 0 = aus. 0.4 mm passt zu 0.4-mm-Düsen.")
+        self.widgets["hole_mm"].setToolTip("Loch in der Mitte, z. B. 8 mm für die Achse eines Uhrwerks. 0 = kein Loch.")
+        self.widgets["rim_mm"].setToolTip("Außenrand, der über dem Bild steht und in der obersten Farbe gedruckt wird.")
         self.widgets["smoothing_px"].setToolTip("Weichzeichnen des Bildes vor der Höhenberechnung.")
         layout.addStretch(1)
 

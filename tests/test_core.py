@@ -190,3 +190,24 @@ def test_analysis():
     plan = auto_plan([BLACK, WHITE], hm)
     use = filament_usage(hm, plan)
     assert abs(sum(u[1] for u in use) - 1) < 1e-6
+
+
+def test_round_clock_mesh_watertight():
+    s = settings(width_mm=40, pixel_size_mm=0.5, shape="circle", hole_mm=8, rim_mm=2,
+                 clock_numbers=True, numbers_mm=5)
+    hm = build_heightmap(gradient(80, 60), s, "bright_high")
+    assert hm.mask is not None
+    assert not hm.mask[hm.shape[0] // 2, hm.shape[1] // 2]          # Loch
+    assert not hm.mask[0, 0]                                        # Ecke außerhalb des Kreises
+    assert hm.heights[hm.mask].max() > s.max_height_mm             # Rand/Ziffern erhöht
+    mesh = heightmap_to_mesh(hm)
+    edges = Counter()
+    for a, b, c in mesh.faces:
+        for e in ((a, b), (b, c), (c, a)):
+            edges[e] += 1
+    assert all(n == 1 and edges[(b, a)] == 1 for (a, b), n in edges.items())
+    assert mesh.volume() > 0
+    w = hm.size_mm[0]
+    import math
+    area = math.pi * (w / 2) ** 2 - math.pi * 4 ** 2
+    assert mesh.volume() == pytest.approx(hm.heights[hm.mask].mean() * area, rel=0.1)

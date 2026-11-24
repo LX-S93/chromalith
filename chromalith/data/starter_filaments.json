@@ -137,6 +137,24 @@
       "color": "#5b3a8c",
       "td": 1.4,
       "owned": false
+    },
+    {
+      "id": "4a148533-3967-5bf3-abc2-8fbaa5010723",
+      "name": "Gold",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#c99a2e",
+      "td": 3.0,
+      "owned": false
+    },
+    {
+      "id": "96611d86-d7ee-5435-bc3f-fe3526e8c766",
+      "name": "Dunkelblau",
+      "brand": "Generisch",
+      "material": "PLA",
+      "color": "#1b2a55",
+      "td": 0.9,
+      "owned": false
     }
   ]
 }

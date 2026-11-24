@@ -16,6 +16,8 @@ LUMA_METHODS = {
     "max": "Maximum RGB",
 }
 
+SHAPES = {"rect": "Rechteck", "circle": "Rund"}
+
 HEIGHT_MODES = {
     "auto": "Automatisch (bunt = farbtreu, sonst Helligkeit)",
     "bright_high": "Hell = hoch",
@@ -42,6 +44,12 @@ class HeightSettings:
     detail_mm: float = 0.0           # Mindestdetail: kleinere Einzelpunkte werden entfernt
     border_mm: float = 0.0           # Rahmenbreite (0 = kein Rahmen)
     border_height_mm: float = 0.0    # 0 = maximale Höhe
+    shape: str = "rect"              # "rect" oder "circle"
+    hole_mm: float = 0.0             # Loch in der Mitte (Durchmesser, z. B. Uhrwerk)
+    rim_mm: float = 0.0              # erhöhter Außenrand (Breite)
+    raise_mm: float = 0.6            # Rand und Ziffern stehen so viel über dem Bild
+    clock_numbers: bool = False      # Uhr-Ziffern 1–12 aufsetzen
+    numbers_mm: float = 12.0         # Ziffernhöhe
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -62,6 +70,8 @@ class HeightSettings:
             raise ValueError("Minimale Höhe darf nicht kleiner als die erste Schicht sein.")
         if self.luma_method not in LUMA_METHODS:
             raise ValueError(f"Unbekannte Luminanz-Methode: {self.luma_method}")
+        if self.shape not in SHAPES:
+            raise ValueError(f"Unbekannte Form: {self.shape}")
         if self.height_mode not in HEIGHT_MODES:
             raise ValueError(f"Unbekannter Höhenmodus: {self.height_mode}")
 
@@ -93,7 +103,12 @@ def load_image(path_or_image) -> Image.Image:
 
 
 def prepare_image(img: Image.Image, settings: HeightSettings):
-    """Skaliert das Bild auf das Modellraster. Gibt (rgb float, alpha float) zurück."""
+    """Skaliert das Bild auf das Modellraster. Gibt (rgb float, alpha float) zurück.
+    Bei runder Form wird mittig quadratisch zugeschnitten."""
+    if settings.shape == "circle" and img.width != img.height:
+        side = min(img.width, img.height)
+        left, top = (img.width - side) // 2, (img.height - side) // 2
+        img = img.crop((left, top, left + side, top + side))
     nx = max(2, int(round(settings.width_mm / settings.pixel_size_mm)) + 1)
     ny = max(2, int(round(nx * img.height / img.width)))
     resized = img.resize((nx, ny), Image.LANCZOS)
@@ -186,6 +201,10 @@ class HeightMap:
     layer_height_mm: float
     image_rgb: np.ndarray    # (ny, nx, 3) Originalfarben (Rahmen = 0)
     border_px: int = 0
+    mask: Optional[np.ndarray] = None   # True = Material vorhanden (None = volles Rechteck)
+
+    def valid(self) -> np.ndarray:
+        return np.ones(self.heights.shape, bool) if self.mask is None else self.mask
 
     @property
     def shape(self):
@@ -206,7 +225,7 @@ class HeightMap:
 
     @property
     def min_layer(self) -> int:
-        return int(layer_index(self.heights.min(), self.base_layer_mm, self.layer_height_mm))
+        return int(layer_index(self.heights[self.valid()].min(), self.base_layer_mm, self.layer_height_mm))
 
     def layer_top(self, layer: int) -> float:
         return layer_top_z(layer, self.base_layer_mm, self.layer_height_mm)
@@ -225,8 +244,9 @@ class HeightMap:
             return a.reshape(my // f, f, mx // f, f, *a.shape[2:]).mean(axis=(1, 3))
 
         h = quantize(block(self.heights), self.base_layer_mm, self.layer_height_mm)
+        mask = None if self.mask is None else block(self.mask.astype(np.float32)) > 0.5
         return HeightMap(h, self.pixel_size_mm * f, self.base_layer_mm, self.layer_height_mm,
-                         block(self.image_rgb).astype(np.float32), self.border_px // f)
+                         block(self.image_rgb).astype(np.float32), self.border_px // f, mask)
 
 
 def quantize(h: np.ndarray, base: float, step: float) -> np.ndarray:
@@ -275,5 +295,51 @@ def build_heightmap(img, settings: HeightSettings, height_mode: Optional[str] = 
         bh = float(quantize(np.array(bh), settings.base_layer_mm, settings.layer_height_mm))
         h = np.pad(h, border_px, mode="constant", constant_values=bh)
         rgb = np.pad(rgb, ((border_px, border_px), (border_px, border_px), (0, 0)))
-    return HeightMap(h.astype(np.float32), settings.pixel_size_mm, settings.base_layer_mm,
-                     settings.layer_height_mm, rgb.astype(np.float32), border_px)
+    hm = HeightMap(h.astype(np.float32), settings.pixel_size_mm, settings.base_layer_mm,
+                   settings.layer_height_mm, rgb.astype(np.float32), border_px)
+    apply_shape(hm, settings)
+    return hm
+
+
+def apply_shape(hm: HeightMap, s: HeightSettings) -> None:
+    """Runde Form, Mittelloch, erhöhter Rand und Uhr-Ziffern (alles in Modell-Pixeln)."""
+    ny, nx = hm.heights.shape
+    ps = hm.pixel_size_mm
+    jj, ii = np.mgrid[0:ny, 0:nx]
+    cx, cy = (nx - 1) / 2, (ny - 1) / 2
+    r = np.hypot((ii - cx) * ps, (jj - cy) * ps)          # Abstand zur Mitte in mm
+    top = float(quantize(np.array(hm.heights.max() + s.raise_mm), hm.base_layer_mm, hm.layer_height_mm))
+    mask = np.ones((ny, nx), bool)
+    if s.shape == "circle":
+        radius = min(nx - 1, ny - 1) * ps / 2
+        mask &= r <= radius
+    else:
+        radius = None
+    if s.hole_mm > 0:
+        mask &= r >= s.hole_mm / 2
+    if s.rim_mm > 0:
+        if s.shape == "circle":
+            ring = r >= radius - s.rim_mm
+        else:
+            k = max(1, int(round(s.rim_mm / ps)))
+            ring = np.zeros((ny, nx), bool)
+            ring[:k], ring[-k:], ring[:, :k], ring[:, -k:] = True, True, True, True
+        hm.heights[ring & mask] = top
+    if s.clock_numbers:
+        from PIL import ImageDraw, ImageFont
+        size_px = max(6, int(round(s.numbers_mm / ps)))
+        font = ImageFont.load_default(size=size_px)
+        canvas = Image.new("L", (nx, ny), 0)
+        draw = ImageDraw.Draw(canvas)
+        outer = (radius if radius is not None else min(nx - 1, ny - 1) * ps / 2) - max(s.rim_mm, 0)
+        rr = (outer - s.numbers_mm * 0.75) / ps
+        stroke = max(1, size_px // 14)
+        for n in range(1, 13):
+            a = np.radians(n * 30)
+            x, y = cx + rr * np.sin(a), cy - rr * np.cos(a)
+            draw.text((x, y), str(n), font=font, anchor="mm", fill=255, stroke_width=stroke, stroke_fill=255)
+        digits = np.asarray(canvas) > 127
+        hm.heights[digits & mask] = top
+    if not mask.all():
+        hm.heights[~mask] = 0.0
+        hm.mask = mask

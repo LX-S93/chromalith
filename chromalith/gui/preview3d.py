@@ -50,8 +50,9 @@ class Preview3D(QOpenGLWidget):
         v[:, 0] -= w / 2
         v[:, 1] -= d / 2
         cols = np.full((len(v), 3), 0.55, dtype=np.float32)
-        ny, nx = small.heights.shape
-        cols[: ny * nx] = simulate_colors(small, plan).reshape(-1, 3)
+        sim = simulate_colors(small, plan).reshape(-1, 3)
+        ti = mesh.top_index
+        cols[ti >= 0] = sim[ti[ti >= 0]]
         self._raw = (v, mesh.faces.astype(np.uint32), cols)
         self._arrays = None
         self.update()

@@ -44,7 +44,9 @@ def filament_usage(hm: HeightMap, plan: ColorPlan):
     """Je Filament: Anteil der Bildfläche, deren oberste Schicht aus diesem Filament ist,
     sowie Anzahl Schichten. Liste von (Filament, Anteil, erste, letzte Schicht)."""
     h = hm.heights
-    if hm.border_px:
+    if hm.mask is not None:
+        h = h[hm.mask]
+    elif hm.border_px:
         b = hm.border_px
         h = h[b:-b, b:-b]
     segs = plan.segments(hm.base_layer_mm, hm.layer_height_mm, max(hm.layer_count, 1))

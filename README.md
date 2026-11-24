@@ -45,6 +45,17 @@ Optional eine eigenständige `.exe` bauen: `build_exe.bat` ausführen, Ergebnis 
 
 Projekte werden als `.chroma` gespeichert (Bild, Einstellungen und Stapel in einer Datei).
 
+## Form: rund, Loch, Rand, Uhr-Ziffern
+
+Unter **Form** lässt sich das Modell rund machen, ein Mittelloch (z. B. 8 mm für ein
+Uhrwerk) und ein erhöhter Rand setzen sowie Uhr-Ziffern 1–12 aufsetzen. Rand und Ziffern
+stehen über dem Bild und werden deshalb in der obersten Farbe gedruckt.
+
+## Beispiele
+
+`python examples/make_motifs.py` erzeugt zwei eigene Testmotive, `python examples/build_examples.py`
+baut daraus fertige Projekte mit STL, Farbwechsel-Liste und Vorschau in `examples/projekte/`.
+
 ## Filamente und TD
 
 Jedes Filament hat eine Farbe und eine **TD** (Transmissions-Distanz, in mm): die Dicke,

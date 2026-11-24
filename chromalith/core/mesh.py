@@ -13,6 +13,7 @@ from .heightmap import HeightMap
 class Mesh:
     vertices: np.ndarray   # (n, 3) float32
     faces: np.ndarray      # (m, 3) int64, gegen den Uhrzeigersinn von außen gesehen
+    top_index: np.ndarray | None = None  # je Vertex: Index im Höhenraster (-1 = Boden/Wand)
 
     def triangles(self) -> np.ndarray:
         return self.vertices[self.faces]
@@ -39,6 +40,8 @@ def _perimeter(ny: int, nx: int) -> np.ndarray:
 
 
 def heightmap_to_mesh(hm: HeightMap) -> Mesh:
+    if hm.mask is not None:
+        return masked_heightmap_to_mesh(hm)
     h = hm.heights
     ny, nx = h.shape
     ps = hm.pixel_size_mm
@@ -76,7 +79,42 @@ def heightmap_to_mesh(hm: HeightMap) -> Mesh:
 
     vertices = np.concatenate([top, per_bottom_v, center]).astype(np.float32)
     faces = np.concatenate([top_faces, walls, bottom_faces]).astype(np.int64)
-    return Mesh(vertices, faces)
+    top_index = np.concatenate([np.arange(n_top), np.full(len(per) + 1, -1)])
+    return Mesh(vertices, faces, top_index)
+
+
+def masked_heightmap_to_mesh(hm: HeightMap) -> Mesh:
+    """Wasserdichtes Netz für beliebige Umrisse (rund, mit Loch …): Oberseite und Boden
+    aus allen gültigen Zellen, Wände an jeder Zellkante, hinter der kein Material ist."""
+    h = hm.heights
+    ny, nx = h.shape
+    ps = hm.pixel_size_mm
+    m = hm.mask
+    cell = m[:-1, :-1] & m[:-1, 1:] & m[1:, :-1] & m[1:, 1:]          # (ny-1, nx-1)
+    jj, ii = np.mgrid[0:ny, 0:nx]
+    top = np.stack([ii * ps, (ny - 1 - jj) * ps, h], -1).reshape(-1, 3)
+    bot = top.copy()
+    bot[:, 2] = 0.0
+    n = ny * nx
+    idx = np.arange(n).reshape(ny, nx)
+    cj, ci = np.nonzero(cell)
+    a, b = idx[cj + 1, ci], idx[cj + 1, ci + 1]
+    c, d = idx[cj, ci + 1], idx[cj, ci]
+    faces = [np.stack([a, b, c], -1), np.stack([a, c, d], -1),                 # oben
+             np.stack([a + n, c + n, b + n], -1), np.stack([a + n, d + n, c + n], -1)]  # Boden
+    padded = np.pad(cell, 1, constant_values=False)
+    # Kanten gegen den Uhrzeigersinn: a->b (unten, Nachbar j+1), b->c (rechts, i+1),
+    # c->d (oben, j-1), d->a (links, i-1)
+    for p_, q_, dj, di in ((a, b, 1, 0), (b, c, 0, 1), (c, d, -1, 0), (d, a, 0, -1)):
+        open_ = ~padded[cj + 1 + dj, ci + 1 + di]
+        p0, q0 = p_[open_], q_[open_]
+        faces += [np.stack([p0 + n, q0 + n, q0], -1), np.stack([p0 + n, q0, p0], -1)]
+    faces = np.concatenate(faces)
+    used = np.unique(faces)
+    remap = np.full(2 * n, -1, np.int64)
+    remap[used] = np.arange(len(used))
+    vertices = np.concatenate([top, bot])[used].astype(np.float32)
+    return Mesh(vertices, remap[faces], np.where(used < n, used, -1))
 
 
 def write_stl(mesh: Mesh, path, name: str = "Chromalith") -> None:
