@@ -211,3 +211,25 @@ def test_round_clock_mesh_watertight():
     import math
     area = math.pi * (w / 2) ** 2 - math.pi * 4 ** 2
     assert mesh.volume() == pytest.approx(hm.heights[hm.mask].mean() * area, rel=0.1)
+
+
+def test_updater_versions_and_download(tmp_path, monkeypatch):
+    import hashlib
+    import zipfile
+    from chromalith import updater
+    assert updater.is_newer("0.10.0", "0.9.9")
+    assert not updater.is_newer("v0.2.0", "0.2.0")
+    z = tmp_path / "u.zip"
+    with zipfile.ZipFile(z, "w") as f:
+        f.writestr("Chromalith/Chromalith.exe", b"x")
+    data = z.read_bytes()
+    manifest = {"version": "99.0.0", "url": z.as_uri(), "sha256": hashlib.sha256(data).hexdigest()}
+    mf = tmp_path / "latest.json"
+    mf.write_text(json.dumps(manifest))
+    info = updater.check_for_update(mf.as_uri())
+    assert info and info.version == "99.0.0"
+    new_dir = updater.extract(updater.download(info))
+    assert (new_dir / "Chromalith.exe").exists()
+    info.sha256 = "0" * 64
+    with pytest.raises(ValueError):
+        updater.download(info)

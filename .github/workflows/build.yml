@@ -25,8 +25,14 @@ jobs:
   windows-exe:
     needs: test
     runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -46,8 +52,38 @@ jobs:
         with:
           name: Chromalith-windows
           path: Chromalith-windows.zip
-      - name: Release (bei Tag v*)
+      - name: Version prüfen (Tag = chromalith/__init__.py)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $v = python -c "import chromalith; print(chromalith.__version__)"
+          if ("v$v" -ne "${{ github.ref_name }}") { Write-Error "Tag ${{ github.ref_name }} passt nicht zu Version $v"; exit 1 }
+      - name: Update-Datei latest.json erzeugen
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $sha = (Get-FileHash Chromalith-windows.zip -Algorithm SHA256).Hash.ToLower()
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          $msg = git tag -l --format='%(contents)' "${{ github.ref_name }}"
+          if (-not $msg) { $msg = "Neue Version $ver" }
+          @{ version = $ver; sha256 = $sha; notes = ($msg -join "`n");
+             url = "https://github.com/LX-S93/chromalith-releases/releases/download/${{ github.ref_name }}/Chromalith-windows.zip" } |
+            ConvertTo-Json | Out-File -Encoding utf8NoBOM latest.json
+          Get-Content latest.json
+      - name: Release im privaten Repository
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: Chromalith-windows.zip
+          files: |
+            Chromalith-windows.zip
+            latest.json
+      - name: Release in der öffentlichen Update-Ablage
+        if: startsWith(github.ref, 'refs/tags/v') && env.RELEASES_TOKEN != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: LX-S93/chromalith-releases
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          files: |
+            Chromalith-windows.zip
+            latest.json
