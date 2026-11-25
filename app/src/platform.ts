@@ -77,6 +77,23 @@ export async function rgbaToPng(rgba: Uint8ClampedArray, w: number, h: number): 
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/** JSON von einem Dienst im Netz holen (z. B. Spoolman). Desktop: über die App selbst, damit weder
+ *  CORS noch „unsichere Inhalte“ im Weg stehen; Browser: normaler Abruf (der Dienst muss CORS erlauben). */
+export async function fetchJson(url: string, timeoutMs = 8000): Promise<any> {
+  const f: typeof fetch = isTauri() ? ((await import("@tauri-apps/plugin-http")).fetch as any) : fetch;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const r = await f(url, { method: "GET", headers: { Accept: "application/json" }, signal: ctl.signal });
+    if (!r.ok) throw new Error(`Der Server antwortet mit Fehler ${r.status}.`);
+    return await r.json();
+  } catch (e: any) {
+    if (ctl.signal.aborted) throw new Error("Keine Antwort innerhalb von 8 Sekunden.");
+    if (e instanceof SyntaxError) throw new Error("Die Antwort ist kein JSON – stimmt die Adresse?");
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
 export const isPng = (b: Uint8Array) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
 
 /** Persönliche Daten (Bibliothek, letzte Einstellungen) im lokalen Speicher. */

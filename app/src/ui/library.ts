@@ -4,6 +4,7 @@ import { saveFile } from "../platform";
 import { button, clear, h, modal, toast, confirmDialog } from "./dom";
 import { filesFromDrop, findLibraryFolders, importFiles, pickFilesBrowser, pickFolderDesktop, readFolder } from "./importer";
 import { isTauri, store } from "../platform";
+import { openSpoolman } from "./spoolman";
 
 export interface LibraryHost {
   library: Filament[];
@@ -25,7 +26,7 @@ export function editFilament(f: Filament | null): Promise<Filament | null> {
     const form = h("div", { class: "form-grid" },
       "Marke", brand, "Name", name, "Material", material,
       "Farbe", h("div", { style: { display: "flex", gap: "8px" } }, color, hex),
-      h("span", { title: "Transmissions-Distanz: Schichtdicke in mm, ab der das Filament fast deckt." }, "TD (mm)"), td,
+      h("span", { title: "Transmissions-Distanz: Schichtdicke in mm, ab der das Filament fast deckt." }, cur.td_estimated ? "TD (mm, geschätzt)" : "TD (mm)"), td,
       "Vorhanden", h("label", { class: "switch", style: { justifyContent: "flex-start" } }, owned));
     let result: Filament | null = null;
     const close = modal(f ? "Filament bearbeiten" : "Neues Filament", form, [
@@ -34,6 +35,7 @@ export function editFilament(f: Filament | null): Promise<Filament | null> {
         if (!name.value.trim()) { toast("Bitte einen Namen eingeben.", "err"); return; }
         result = { ...cur, brand: brand.value.trim(), name: name.value.trim(), material: material.value.trim() || "PLA",
           color: color.value, td: Math.max(0.05, Number(td.value) || 1), owned: owned.checked };
+        if (Number(td.value) !== cur.td) delete result.td_estimated;
         close();
       }, { cls: "primary" }),
     ], true, () => resolve(result));
@@ -58,8 +60,9 @@ export function openLibrary(host: LibraryHost, select = false): Promise<Filament
         const tr = h("tr", { class: chosen.has(f.id) || current === f.id ? "sel" : "" },
           h("td", null, h("div", { class: "swatch", style: { background: f.color } })),
           h("td", null, f.brand), h("td", null, f.name), h("td", null, f.material),
-          h("td", { style: { fontFamily: "monospace" } }, f.color), h("td", null, f.td.toFixed(1)),
-          h("td", null, f.owned ? "✓" : ""));
+          h("td", { style: { fontFamily: "monospace" } }, f.color), h("td", f.td_estimated ? { title: "Geschätzt vom farblich nächsten Filament. Bitte den echten TD eintragen.", style: { color: "var(--warn)" } } : null, (f.td_estimated ? "~" : "") + f.td.toFixed(1)),
+          h("td", null, f.owned ? "✓" : ""),
+          h("td", { title: f.spoolman_id != null ? "Restmenge laut Spoolman" : "" }, f.remaining_g != null && f.spoolman_id != null ? `${f.remaining_g} g` : ""));
         tr.addEventListener("click", () => {
           current = f.id;
           if (select) chosen.has(f.id) ? chosen.delete(f.id) : chosen.add(f.id);
@@ -90,9 +93,10 @@ export function openLibrary(host: LibraryHost, select = false): Promise<Filament
         host.library.splice(host.library.indexOf(f), 1); chosen.delete(f.id); host.saveLibrary(); refresh();
       }, { icon: "trash" }),
       button("Importieren", () => importDialog(host).then(refresh), { icon: "upload", title: "Filamente aus Bibliotheks- oder Set-Dateien (.json/.fss) oder einem ganzen Ordner übernehmen" }),
+      button("Spoolman", () => openSpoolman(host).then(refresh), { icon: "download", title: "Rollen aus Spoolman als vorhandene Filamente übernehmen (Farbe, Material, Preis, Restgewicht)" }),
       button("Exportieren", () => saveFile("filamente.json", serializeLibrary(host.library), [{ name: "JSON", extensions: ["json"] }]), { icon: "download" }));
     const table = h("table", { class: "lib-table" },
-      h("thead", null, h("tr", null, ...["", "Marke", "Name", "Material", "Farbe", "TD", "Vorh."].map((t) => h("th", null, t)))), tbody);
+      h("thead", null, h("tr", null, ...["", "Marke", "Name", "Material", "Farbe", "TD", "Vorh.", "Rest"].map((t) => h("th", null, t)))), tbody);
     const content = h("div", null, tools, h("div", { style: { maxHeight: "56vh", overflow: "auto" } }, table),
       h("p", { class: "hint", style: { margin: "10px 0 0" } }, "Tipp: Bibliotheks-Dateien oder ganze Ordner hierher ziehen, um Filamente zu übernehmen."));
     content.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); });

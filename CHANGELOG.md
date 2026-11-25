@@ -2,6 +2,21 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.11.0 – 2026-11-25
+
+- **Spoolman-Anbindung**: In der Filament-Bibliothek unter „Spoolman“ (oder im Menü „…“) die Adresse
+  eintragen, z. B. `http://192.168.1.20:7912`. Chromalith übernimmt alle Rollen als „vorhandene“ Filamente
+  mit Farbe, Material, Hersteller, Preis und Restgewicht. Mehrere Rollen desselben Filaments werden addiert,
+  archivierte Rollen zählen nicht.
+- Beim Programmstart wird automatisch abgeglichen (abschaltbar). Rollen, die es in Spoolman nicht mehr gibt,
+  verlieren das Häkchen „vorhanden“.
+- **TD-Wert**: wird aus einem Spoolman-Zusatzfeld `td` am Filament gelesen. Fehlt er, schätzt Chromalith ihn
+  vom farblich nächsten Filament und markiert ihn mit „~“, bis du den echten Wert einträgst. Ein in Chromalith
+  eingetragener TD bleibt beim Abgleich erhalten.
+- **Kosten** rechnen mit dem echten Preis je Filament aus Spoolman. Reicht die Restmenge einer Rolle für den
+  Druck nicht, warnt die Verbrauchstabelle.
+- Chromalith liest nur aus Spoolman und ändert dort nichts.
+
 ## 0.10.0 – 2026-11-25
 
 ### Neu

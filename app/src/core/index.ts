@@ -11,3 +11,4 @@ export * from "./suggest";
 export * from "./threemf";
 export * from "./zip";
 export * from "./islands";
+export * from "./spoolman";

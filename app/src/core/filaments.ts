@@ -12,6 +12,24 @@ export interface Filament {
   color: string; // #rrggbb
   td: number; // Transmissions-Distanz in mm
   owned: boolean;
+  /** Preis in € pro kg (z. B. aus Spoolman). */
+  price?: number;
+  /** Restmenge in g über alle Rollen (aus Spoolman). */
+  remaining_g?: number;
+  /** Filament-ID in Spoolman, falls von dort übernommen. */
+  spoolman_id?: number;
+  /** TD ist nur geschätzt (vom farblich nächsten Filament übernommen). */
+  td_estimated?: boolean;
+}
+
+/** Optionale Zusatzangaben aus gespeicherten Daten übernehmen (nur gültige Werte). */
+export function filamentExtras(d: any): Partial<Filament> {
+  const o: Partial<Filament> = {};
+  if (Number.isFinite(d?.price) && d.price > 0) o.price = Number(d.price);
+  if (Number.isFinite(d?.remaining_g)) o.remaining_g = Number(d.remaining_g);
+  if (Number.isFinite(d?.spoolman_id)) o.spoolman_id = Number(d.spoolman_id);
+  if (d?.td_estimated === true) o.td_estimated = true;
+  return o;
 }
 
 export const filamentRgb = (f: Filament): RGB => hexToRgb(f.color);
@@ -25,12 +43,12 @@ export function newId(): string {
 
 export function makeFilament(p: Partial<Filament> & { name: string; color: string; td: number }): Filament {
   return { id: p.id ?? newId(), brand: p.brand ?? "", material: p.material ?? "PLA", owned: p.owned ?? false,
-    name: p.name, color: p.color, td: p.td };
+    name: p.name, color: p.color, td: p.td, ...filamentExtras(p) };
 }
 
 function fromOwn(d: any): Filament {
   return makeFilament({ id: String(d.id ?? newId()), name: String(d.name), color: String(d.color), td: Number(d.td),
-    brand: String(d.brand ?? ""), material: String(d.material ?? "PLA"), owned: Boolean(d.owned) });
+    brand: String(d.brand ?? ""), material: String(d.material ?? "PLA"), owned: Boolean(d.owned), ...filamentExtras(d) });
 }
 
 /** Einträge im verbreiteten Schema Brand/Name/Type/Color/Transmissivity/Owned/uuid. */

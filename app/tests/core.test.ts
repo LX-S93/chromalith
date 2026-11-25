@@ -234,3 +234,56 @@ it("Farbinsel: Bereich wird angehoben und bekommt eigenes Filament", () => {
   expect(est[est.length - 1].start_layer).toBe(hm.restLayers! + 1);
   void applyIslands;
 });
+
+import { spoolmanBase, spoolmanUrl, spoolmanEntries, syncSpoolman, spoolmanTd, serializeLibrary } from "../src/core";
+describe("Spoolman", () => {
+  const vendor = { id: 1, name: "Bambu Lab", extra: {} };
+  const spools = [
+    { id: 1, remaining_weight: 800, price: 20, archived: false, extra: {},
+      filament: { id: 10, name: "Basic Rot", vendor, material: "PLA", weight: 1000, price: 25, color_hex: "C12E1F", extra: { td: "\"1,8\"" } } },
+    { id: 2, remaining_weight: 150.4, archived: false, extra: {},
+      filament: { id: 10, name: "Basic Rot", vendor, material: "PLA", weight: 1000, price: 25, color_hex: "C12E1F", extra: { td: "\"1,8\"" } } },
+    { id: 3, remaining_weight: 500, archived: false, extra: {},
+      filament: { id: 11, name: "Matte Weiß", vendor, material: "PLA", weight: 500, price: 12, color_hex: "ffffff", extra: {} } },
+    { id: 4, remaining_weight: 0, archived: true, extra: {}, filament: { id: 12, name: "Alt", material: "PETG", color_hex: "000000" } },
+    { id: 5, remaining_weight: 10, extra: {}, filament: { id: 13, name: "Ohne Farbe", material: "PLA" } },
+  ];
+  it("vereinheitlicht die Adresse", () => {
+    expect(spoolmanBase(" 192.168.60.10:7912/ ")).toBe("http://192.168.60.10:7912");
+    expect(spoolmanBase("https://spool.example/api/v1/")).toBe("https://spool.example");
+    expect(spoolmanUrl("192.168.60.10:7912", "spool")).toBe("http://192.168.60.10:7912/api/v1/spool");
+  });
+  it("liest TD aus Zusatzfeldern", () => {
+    expect(spoolmanTd({ td: "2.5" })).toBe(2.5);
+    expect(spoolmanTd({ hueforge_td: "\"3\"" })).toBe(3);
+    expect(spoolmanTd({ notiz: "\"x\"" })).toBeNull();
+  });
+  it("fasst Rollen je Filament zusammen", () => {
+    const { entries, skipped } = spoolmanEntries(spools);
+    expect(skipped).toBe(1);
+    expect(entries.length).toBe(2);
+    const rot = entries.find((e) => e.spoolman_id === 10)!;
+    expect(rot).toMatchObject({ brand: "Bambu Lab", color: "#c12e1f", td: 1.8, spools: 2, price: 20 });
+    expect(rot.remaining_g).toBeCloseTo(950.4);
+    expect(entries.find((e) => e.spoolman_id === 11)!.price).toBe(24);
+    expect(() => spoolmanEntries({ detail: "x" })).toThrow();
+  });
+  it("gleicht die Bibliothek ab und behält eigene TD-Werte", () => {
+    const lib = starterLibrary();
+    const n = lib.length;
+    const r = syncSpoolman(lib, spools);
+    expect(r).toMatchObject({ added: 2, updated: 0, estimated: 1, total: 2 });
+    expect(lib.length).toBe(n + 2);
+    const weiss = lib.find((f) => f.spoolman_id === 11)!;
+    expect(weiss.owned && weiss.td_estimated).toBe(true);
+    weiss.td = 6.5; delete weiss.td_estimated;
+    const r2 = syncSpoolman(lib, spools.slice(0, 2));
+    expect(r2).toMatchObject({ added: 0, updated: 1, gone: 1 });
+    expect(lib.length).toBe(n + 2);
+    expect(weiss.td).toBe(6.5);
+    expect(weiss.owned).toBe(false);
+    // Zusatzangaben überstehen Speichern und Laden
+    const back = parseFilaments(JSON.parse(serializeLibrary(lib))).find((f) => f.spoolman_id === 10)!;
+    expect(back).toMatchObject({ price: 20, remaining_g: 950, td: 1.8, owned: true });
+  });
+});

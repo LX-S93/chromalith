@@ -1,7 +1,7 @@
 /** Projekt (.chroma): Bild (eingebettet als PNG), Einstellungen, Filament-Stapel.
  *  Kompatibel mit den .chroma-Dateien der bisherigen Python-Version. */
 import { colorError, layerPalette, nearestHeights, optimizeLumaPlan, optimizePlan } from "./colormatch";
-import { isChromatic, filamentLuminance, type Filament } from "./filaments";
+import { isChromatic, filamentLuminance, filamentExtras, type Filament } from "./filaments";
 import { buildHeightmap, normalizeSettings, prepareImage, type DigitRenderer, type EffectiveMode, type HeightMap, type HeightSettings } from "./heightmap";
 import { autoPlan, ordered, type ColorStop } from "./plan";
 import type { Raster } from "./raster";
@@ -92,7 +92,7 @@ export function parseProject(text: string): ParsedProject {
     start_layer: Number(s.start_layer),
     filament: { id: String(s.filament.id), name: String(s.filament.name), brand: String(s.filament.brand ?? ""),
       material: String(s.filament.material ?? "PLA"), color: String(s.filament.color), td: Number(s.filament.td),
-      owned: Boolean(s.filament.owned) } as Filament,
+      owned: Boolean(s.filament.owned), ...filamentExtras(s.filament) } as Filament,
   }));
   const islands = (d.islands ?? []).filter((i: any) => i && i.filament).map(normalizeIsland);
   return { name: d.name ?? "Unbenannt", settings: normalizeSettings(d.settings), stops, islands, imagePng: d.image_png ? b64decode(d.image_png) : null };

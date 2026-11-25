@@ -12,6 +12,7 @@ import { decodeImage, isPng, isTauri, openFile, rgbaToPng, saveFile, saveSibling
 import { $, button, clear, confirmDialog, h, icon, modal, toast } from "./ui/dom";
 import { section, selectField, sliderField, switchField, type Field } from "./ui/fields";
 import { editFilament, openLibrary } from "./ui/library";
+import { openSpoolman, spoolmanAutoSync, syncSummary } from "./ui/spoolman";
 import { findLibraryFolders, importFiles, readFolder } from "./ui/importer";
 import { StackPanel } from "./ui/stack";
 import { openSuggest } from "./ui/suggest";
@@ -115,6 +116,7 @@ menu.append(button(null, () => menu.classList.toggle("open"), { icon: "more", cl
     menuItem("Vorschaubild exportieren …", exportPreview, "", "image"),
     menuItem("Druck-Assistent (Farbwechsel) …", showAssistant, "", "layers"),
     menuItem("Filament-Bibliothek …", () => openLibrary(libHost).then(() => refreshAnalysis()), "Strg+L", "library"),
+    menuItem("Spoolman verbinden …", () => openSpoolman(libHost).then(() => refreshAnalysis()), "", "download"),
     menuItem("Über Chromalith", about, "", "layers")));
 document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target as Node)) menu.classList.remove("open"); });
 
@@ -310,6 +312,11 @@ setStatus(["Bild öffnen (Strg+O) oder Bild ins Fenster ziehen, um zu beginnen."
 updateTitle();
 refreshAnalysis();
 importLegacyLibrary();
+spoolmanAutoSync(libHost).then((r) => {
+  if (!r) return;
+  refreshAnalysis();
+  if (r.added || r.gone) toast(`Spoolman abgeglichen: ${syncSummary(r)}.`, "ok");
+});
 
 // ------------------------------------------------------------------ Synchronisation
 function syncFields() {
@@ -480,9 +487,14 @@ function refreshAnalysis() {
 /** Verbrauch, Gewicht und Kosten je Filament (aus dem Volumen der Schichten). */
 function consumption() {
   const price = store.get("pricePerKg", 25);
+  const byId = new Map(library.map((f) => [f.id, f]));
   return (state.result?.usage ?? []).map((u) => {
     const cm3 = u.volume_mm3 / 1000, g = cm3 * materialDensity(u.filament.material);
-    return { u, cm3, g, m: u.volume_mm3 / (Math.PI * 0.875 * 0.875) / 1000, cost: (g / 1000) * price };
+    // Preis und Restmenge aus der Bibliothek (z. B. von Spoolman), sonst der allgemeine Preis pro kg
+    const lib = byId.get(u.filament.id) ?? u.filament;
+    const own = lib.price != null;
+    const rest = lib.spoolman_id != null && lib.owned ? lib.remaining_g ?? null : null;
+    return { u, cm3, g, m: u.volume_mm3 / (Math.PI * 0.875 * 0.875) / 1000, cost: (g / 1000) * (own ? lib.price! : price), own, rest };
   });
 }
 function costCard() {
@@ -500,11 +512,15 @@ function costCard() {
       h("tbody", null, ...[...rows].reverse().map((r) => h("tr", null,
         h("td", null, h("div", { class: "swatch", style: { background: r.u.filament.color } })),
         h("td", null, filamentLabel(r.u.filament)), h("td", null, `${r.u.first}–${r.u.last}`),
-        h("td", null, `${f(r.cm3)} cm³`), h("td", null, `${f(r.g)} g`), h("td", null, `${f(r.m, 2)} m`), h("td", null, `${f(r.cost, 2)} €`)))),
+        h("td", null, `${f(r.cm3)} cm³`),
+        h("td", r.rest != null && r.rest < r.g ? { style: { color: "var(--err)" }, title: `Reicht nicht: laut Spoolman sind nur noch ${r.rest} g da.` } : r.rest != null ? { title: `Laut Spoolman noch ${r.rest} g vorhanden.` } : null,
+          `${f(r.g)} g` + (r.rest != null && r.rest < r.g ? " ⚠" : "")),
+        h("td", null, `${f(r.m, 2)} m`),
+        h("td", r.own ? { title: "Mit dem Preis dieses Filaments aus Spoolman gerechnet." } : null, `${f(r.cost, 2)} €` + (r.own ? " *" : ""))))),
       h("tfoot", null, h("tr", null, h("td", null, ""), h("td", null, "Gesamt"), h("td", null, ""),
         h("td", null, `${f(sum.cm3)} cm³`), h("td", null, `${f(sum.g)} g`), h("td", null, `${f(sum.m, 2)} m`), h("td", null, `${f(sum.cost, 2)} €`)))),
     h("div", { style: { display: "flex", gap: "10px", alignItems: "center", marginTop: "12px", flexWrap: "wrap" } },
-      h("span", { class: "hint" }, "Preis pro kg"), priceIn, h("span", { class: "hint" }, "€"), h("div", { class: "spacer" }),
+      h("span", { class: "hint" }, "Preis pro kg"), priceIn, h("span", { class: "hint" }, rows.some((r) => r.own) ? "€ (für Filamente ohne eigenen Preis; * = Preis aus Spoolman)" : "€"), h("div", { class: "spacer" }),
       button("Druck-Assistent öffnen", showAssistant, { icon: "layers", cls: "small primary", title: "Führt beim Drucken Schritt für Schritt durch die Farbwechsel" })));
   return card;
 }
