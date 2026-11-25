@@ -184,12 +184,22 @@ left.append(section("Farbinseln", false, islandPanel.el));
 for (const d of left.querySelectorAll("details.section")) if (["Form", "Schichten", "Farbinseln"].includes(d.querySelector("summary")!.textContent!)) (d as HTMLElement).dataset.mode = "relief";
 
 // ------------------------------------------------------------------ Lithophanie
-const LIGHTS: Record<string, string> = { "#ffd9a0": "Warmweiß (LED 2700 K)", "#fff1dc": "Neutralweiß", "#e4eeff": "Kaltweiß", "#ffb066": "Kerze / Teelicht" };
+/** Lichtquellen: Farbe (aus der Farbtemperatur), Punktlicht oder gleichmäßig, Höhe im Körper, Grundhelligkeit */
+const LAMPS: Record<string, { name: string; color: string; point: boolean; height: number; power: number; spill: number }> = {
+  tealight: { name: "LED-Teelicht (flackerfrei, 2200 K)", color: "#ffb46b", point: true, height: 0.18, power: 0.8, spill: 1.3 },
+  warm: { name: "LED-Lampe warmweiß (2700 K)", color: "#ffd2a1", point: true, height: 0.5, power: 1.2, spill: 1 },
+  neutral: { name: "LED-Lampe neutralweiß (4000 K)", color: "#ffeed8", point: true, height: 0.5, power: 1.2, spill: 1 },
+  cold: { name: "LED-Lampe kaltweiß (6500 K)", color: "#eef2ff", point: true, height: 0.5, power: 1.2, spill: 1 },
+  string: { name: "Lichterkette (viele kleine Lichter)", color: "#ffc98f", point: false, height: 0.5, power: 0.75, spill: 0.6 },
+  panel: { name: "Leuchtrahmen / LED-Panel (gleichmäßig)", color: "#fff3e4", point: false, height: 0.5, power: 1, spill: 0.5 },
+};
+const LIGHTS = Object.fromEntries(Object.entries(LAMPS).map(([k, v]) => [k, v.name]));
 const lithoView = {
   filament: store.get<{ name: string; color: string; td: number }>("lithoFilament", { name: "Generisch Weiß", color: "#f2f1ec", td: 4.5 }),
-  light: store.get("lithoLight", "#ffd9a0"), intensity: store.get("lithoIntensity", 1.6), on: true,
+  lamp: store.get("lithoLamp", "warm"), intensity: store.get("lithoIntensity", 1), on: true,
 };
-const lithoLight = () => ({ filamentColor: lithoView.filament.color, td: lithoView.filament.td, light: lithoView.light, intensity: lithoView.intensity });
+const lamp = () => LAMPS[lithoView.lamp] ?? LAMPS.warm;
+const lithoLight = () => ({ filamentColor: lithoView.filament.color, td: lithoView.filament.td, light: lamp().color, intensity: lithoView.intensity * lamp().power });
 const kindPill = h("div", { class: "mode-pill", style: { display: "flex", marginBottom: "10px" }, title: "Farbrelief: farbiges Bild aus Filament-Schichten. Lithophanie: einfarbiges Bild, das im Gegenlicht erscheint." });
 const kindBtns = ([[false, "Farbrelief"], [true, "Lithophanie"]] as const).map(([v, label]) => {
   const b = h("button", { style: { flex: "1" }, onclick: () => { setSetting("litho", v); syncLitho(); } }, label);
@@ -201,10 +211,11 @@ const lithoFilBtn = button("", async () => {
   lithoView.filament = { name: filamentLabel(f), color: f.color, td: f.td }; store.set("lithoFilament", lithoView.filament);
   syncLitho(); schedule(0);
 }, { cls: "wide", title: "Filament der Lithophanie wählen. Weiß oder Natur mit TD 3 bis 6 funktioniert am besten." });
-const lithoLightSel = selectField("Lichtfarbe", LIGHTS, (v) => { lithoView.light = v; store.set("lithoLight", v); schedule(0); }, "Farbe der Lampe hinter bzw. in der Lithophanie.");
+const lithoLightSel = selectField("Lichtquelle", LIGHTS, (v) => { lithoView.lamp = v; store.set("lithoLamp", v); schedule(0); },
+  "Was hinter bzw. in der Lithophanie leuchtet. Eine einzelne LED gibt einen hellen Fleck in der Mitte, Lichterkette und Leuchtrahmen leuchten gleichmäßig.");
 const lithoIntensity = sliderField("Lichtstärke", 0.4, 4, 0.1, "×", (v) => { lithoView.intensity = v; store.set("lithoIntensity", v); schedule(0); },
   "Wie hell die Lampe ist. Bei zu wenig Licht bleiben dicke Stellen schwarz, bei zu viel überstrahlen dünne.", 1);
-lithoLightSel.set(lithoView.light); lithoIntensity.set(lithoView.intensity);
+lithoLightSel.set(lithoView.lamp); lithoIntensity.set(lithoView.intensity);
 const lithoSection = section("Lithophanie", true,
   (fields.litho_form = selectField("Form", LITHO_FORMS, (v) => { setSetting("litho_form", v as any); syncLitho(); }, "Flach für Fensterbilder und Leuchtrahmen, gebogen steht von selbst, Zylinder als Lampenschirm, Kugel als Ornament.")).el,
   sl("litho_min_mm", "Dünnste Stelle (hell)", 0.3, 2, 0.05, "mm", "Wandstärke an den hellsten Bildstellen. 0,6 mm bis 0,8 mm ist stabil und lässt viel Licht durch."),
@@ -529,7 +540,8 @@ async function rebuildLitho() {
   viewPreview.set(state.previewRgba, r.width, r.height);
   viewPreview.setCompare(null);
   view3d.setCompare(false);
-  view3d.setFree(r.mesh, lithoView.filament.color, lithoView.on);
+  const closed = state.settings.litho_form === "cylinder" || state.settings.litho_form === "sphere";
+  view3d.setFree(r.mesh, { ...lithoLight(), point: lamp().point, lampHeight: closed ? lamp().height : 0.5, behind: !closed, spill: lamp().spill * (closed ? 1 : 0.6) }, lithoView.on);
   const g = (r.volume_mm3 / 1000) * 1.24;
   setStatus([`<b>Lithophanie</b>`, `${r.size[0].toFixed(0)} × ${r.size[1].toFixed(0)} × ${r.size[2].toFixed(0)} mm`,
     `Wand ${state.settings.litho_min_mm.toFixed(2)}–${state.settings.litho_max_mm.toFixed(1)} mm`, `≈ ${g.toFixed(0)} g`, `≈ ${(r.triangles / 1e6).toFixed(2)} Mio. Dreiecke`, r.note]);

@@ -50,7 +50,7 @@ export const suggest = (settings: HeightSettings, stops: ColorStop[], library: C
 
 export interface LithoResult {
   width: number; height: number; preview: ArrayBuffer; size: [number, number, number]; note: string; volume_mm3: number; triangles: number;
-  mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer };
+  mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; thick: ArrayBuffer; thickS: ArrayBuffer; baseN: ArrayBuffer };
 }
 export const litho = (settings: HeightSettings, light: LithoLight) => call<LithoResult>({ type: "litho", settings, light });
 export const lithoExport = (settings: HeightSettings, light: LithoLight, name: string) =>

@@ -2,6 +2,20 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.15.0 – 2026-11-25
+
+- **Lithophanie: deutlich realistischere Beleuchtung in der 3D-Ansicht.**
+  - Die Lampe ist ein echtes Punktlicht im Körper (bei flach und gebogen dahinter): Nah an der Lampe ist es
+    heller (Hotspot), zum Rand hin fällt das Licht ab, und schräg getroffene Wände lassen weniger durch.
+  - Abschwächung nach Wandstärke und TD getrennt je Farbe: Dicke Stellen werden nicht nur dunkler, sondern
+    auch wärmer, wie bei echtem weißem Filament.
+  - Streuung im Material: Das Licht verwischt in der Wand etwas, feine Details wirken weicher als das Relief.
+  - Glühen um helle Stellen (Bloom), Filmic-Tonemapping wie bei einer Kamera, dunkler Raum und Lichtschein
+    auf dem Tisch.
+- **Lichtquellen zur Auswahl**: LED-Teelicht, LED-Lampe warmweiß / neutralweiß / kaltweiß, Lichterkette,
+  Leuchtrahmen. Teelicht und Lampe geben einen hellen Fleck, Lichterkette und Leuchtrahmen leuchten gleichmäßig.
+- Die flache Gegenlicht-Vorschau rechnet mit demselben Material-Modell (Streuung, Farbstich, Tonemapping).
+
 ## 0.14.0 – 2026-11-25
 
 - **Neuer Modus „Lithophanie“** (Umschalter oben links: Farbrelief / Lithophanie). Aus dem Bild wird eine

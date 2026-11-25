@@ -1,6 +1,23 @@
 /** 3D-Ansicht mit three.js: Netz mit simulierten Farben, Drehen/Zoomen, Z-Überhöhung. */
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+
+/** Aussehen der Lithophanie in der 3D-Ansicht */
+export interface LithoLook {
+  filamentColor: string; td: number; light: string; intensity: number;
+  /** Punktlicht (LED, Teelicht) mit Hotspot oder gleichmäßiges Licht (Leuchtrahmen, Lichterkette) */
+  point: boolean;
+  /** Höhe der Lampe im Körper, 0 = unten, 1 = oben */
+  lampHeight: number;
+  /** Lampe hinter dem Bild (flach, gebogen) statt im Körper */
+  behind: boolean;
+  /** Wie viel Licht auf den Tisch fällt */
+  spill: number;
+}
 import { srgbToLinear } from "../core";
 import { h } from "./dom";
 
@@ -130,46 +147,149 @@ export class ModelView {
     this.render();
   }
 
-  /** Freier Körper (Lithophanie): beleuchtet = durchscheinende Farben, sonst Filamentfarbe mit Schattierung. */
-  private free: { lit: Float32Array; plain: THREE.Color } | null = null;
-  setFree(m: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer }, plainColor: string, lit: boolean) {
+  /** Lithophanie-Körper mit physikalisch angelehnter Beleuchtung: Lampe als Punktlicht (Abfall mit dem Abstand,
+   *  schräger Lichtweg durch die Wand), Abschwächung je Farbkanal nach Wandstärke und TD, Streuung im Material,
+   *  Glühen (Bloom), Filmic-Tonemapping und Lichtschein auf dem Tisch. */
+  private free: { lit: THREE.ShaderMaterial; plain: THREE.MeshStandardMaterial; ground: THREE.Mesh; on: boolean } | null = null;
+  private composer: EffectComposer | null = null;
+  private bloom: UnrealBloomPass | null = null;
+  private freeKey = "";
+  setFree(m: { vertices: ArrayBuffer; faces: ArrayBuffer; thick: ArrayBuffer; thickS: ArrayBuffer; baseN: ArrayBuffer }, o: LithoLook, lit: boolean) {
     if (!this.ensure()) return;
     this.clear();
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(m.vertices), 3));
-    const col = new Float32Array(m.colors);
-    for (let i = 0; i < col.length; i++) col[i] = srgbToLinear(col[i]);
-    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setAttribute("thick", new THREE.BufferAttribute(new Float32Array(m.thick), 1));
+    geo.setAttribute("thickS", new THREE.BufferAttribute(new Float32Array(m.thickS), 1));
+    geo.setAttribute("baseN", new THREE.BufferAttribute(new Float32Array(m.baseN), 3));
     geo.setIndex(new THREE.BufferAttribute(new Uint32Array(m.faces), 1));
     geo.computeVertexNormals();
     geo.computeBoundingBox();
-    this.free = { lit: col, plain: new THREE.Color(plainColor) };
-    this.baseZ = null; this.top = null; this.baseCol = null;
-    this.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial());
-    this.scene.add(this.mesh);
-    this.setLit(lit);
     const bb = geo.boundingBox!, c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
+    // Lampe: bei geschlossenen Formen innen auf der Achse, sonst hinter dem Bild
+    const lamp = new THREE.Vector3(c.x, c.y, bb.min.z + sz.z * o.lampHeight);
+    let ref = Math.max(8, Math.min(sz.x, sz.y) / 2);
+    if (o.behind) { ref = Math.max(sz.x, sz.z) * 0.75; lamp.set(c.x, bb.max.y + ref, bb.min.z + sz.z * o.lampHeight); }
+    const lin = (hex: string) => new THREE.Color(hex); // THREE.Color rechnet sRGB -> linear
+    const k = Math.log(20) / Math.max(o.td, 0.05);
+    const litMat = new THREE.ShaderMaterial({
+      side: THREE.DoubleSide,
+      uniforms: {
+        lampPos: { value: lamp }, lampColor: { value: lin(o.light) }, intensity: { value: o.intensity }, refDist: { value: ref },
+        point: { value: o.point ? 1 : 0 }, kAbs: { value: new THREE.Vector3(k * 0.9, k, k * 1.22) }, albedo: { value: lin(o.filamentColor) },
+        td: { value: o.td }, scatter: { value: 0.55 },
+      },
+      vertexShader: `
+        attribute float thick; attribute float thickS; attribute vec3 baseN;
+        varying float vT; varying float vTs; varying vec3 vBase; varying vec3 vWorld; varying vec3 vNormal;
+        void main() {
+          vT = thick; vTs = thickS; vBase = baseN; vNormal = normal;
+          vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz;
+          gl_Position = projectionMatrix * viewMatrix * w;
+        }`,
+      fragmentShader: `
+        uniform vec3 lampPos; uniform vec3 lampColor; uniform float intensity; uniform float refDist; uniform float point;
+        uniform vec3 kAbs; uniform vec3 albedo; uniform float td; uniform float scatter;
+        varying float vT; varying float vTs; varying vec3 vBase; varying vec3 vWorld; varying vec3 vNormal;
+        void main() {
+          vec3 toP = vWorld - lampPos; float d = length(toP); vec3 ray = toP / max(d, 1e-3);
+          vec3 bn = normalize(vBase);
+          // Einfallswinkel auf die Wand: schräg = weniger Licht pro Fläche und längerer Weg durchs Material
+          float cosIn = mix(1.0, clamp(dot(ray, bn), 0.0, 1.0), point);
+          float fall = mix(1.0, (refDist * refDist) / max(d * d, 1.0), point);
+          vec3 E = lampColor * intensity * 1.6 * fall * (0.25 + 0.75 * cosIn);
+          vec3 V = normalize(cameraPosition - vWorld);
+          vec3 col;
+          if (vT < 0.0) {
+            // Innenseite: direkt angestrahlt, streut das Licht im Körper weiter
+            col = E * albedo * 0.9 + lampColor * intensity * 0.25 * albedo;
+          } else {
+            float t = mix(vT, vTs, scatter);
+            float path = t / max(mix(1.0, cosIn, 0.6), 0.35);
+            vec3 T = exp(-kAbs * path) * pow(max(albedo, vec3(0.02)), vec3(min(1.5, path / td + 0.15)));
+            // gestreutes Licht tritt nach allen Seiten aus; in Blickrichtung zur Lampe etwas mehr (Vorwärtsstreuung)
+            float fwd = pow(max(dot(-V, ray), 0.0), 6.0);
+            // Relief: Flanken, die von der Lampe weg zeigen, wirken etwas dunkler
+            float relief = 0.82 + 0.18 * clamp(dot(normalize(vNormal), bn), 0.0, 1.0);
+            col = E * T * (0.85 + 0.6 * fwd * exp(-0.5 * path)) * relief;
+            // wenig Raumlicht von vorn, damit die Oberfläche nicht im Nichts verschwindet
+            col += albedo * 0.012 * (0.4 + 0.6 * max(dot(normalize(vNormal), V), 0.0));
+          }
+          gl_FragColor = vec4(col, 1.0);
+        }`,
+    });
+    const plain = new THREE.MeshStandardMaterial({ color: new THREE.Color(o.filamentColor), roughness: 0.6, metalness: 0, side: THREE.DoubleSide });
+    this.baseZ = null; this.top = null; this.baseCol = null;
+    this.mesh = new THREE.Mesh(geo, plain);
+    this.scene.add(this.mesh);
+    // Tisch mit Lichtschein
+    const gr = Math.max(sz.x, sz.y, sz.z) * 4;
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(gr, 64), new THREE.ShaderMaterial({
+      uniforms: { lampPos: { value: lamp }, lampColor: { value: lin(o.light) }, intensity: { value: o.intensity }, refDist: { value: ref }, radius: { value: gr },
+        center: { value: new THREE.Vector3(c.x, c.y, bb.min.z) }, objR: { value: Math.max(sz.x, sz.y) / 2 }, spill: { value: o.spill } },
+      vertexShader: `varying vec3 vWorld; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: `
+        uniform vec3 lampPos; uniform vec3 lampColor; uniform float intensity; uniform float refDist; uniform float radius; uniform vec3 center; uniform float objR; uniform float spill;
+        varying vec3 vWorld;
+        void main() {
+          vec3 toL = lampPos - vWorld; float d = length(toL);
+          float r = length(vWorld.xy - center.xy);
+          // Licht, das durch Wand und Öffnungen auf den Tisch fällt: nimmt mit dem Abstand ab, flacher Einfall = schwächer
+          float e = (refDist * refDist) / max(d * d, 1.0) * clamp(toL.z / d + 0.25, 0.05, 1.0);
+          float contact = smoothstep(objR * 0.55, objR * 1.25, r) * 0.75 + 0.25;
+          float fade = 1.0 - smoothstep(radius * 0.45, radius, r);
+          vec3 table = vec3(0.085, 0.07, 0.06);
+          vec3 col = table * (lampColor * intensity * spill * e * contact + vec3(0.02)) * fade;
+          gl_FragColor = vec4(col, 1.0);
+        }`,
+    }));
+    ground.position.set(c.x, c.y, bb.min.z - 0.05);
+    this.scene.add(ground);
+    this.free = { lit: litMat, plain, ground, on: lit };
+    this.bloomScale = Math.min(1.4, 0.55 + 0.25 * o.intensity);
+    this.setLit(lit);
     const key = `${sz.x.toFixed(0)}|${sz.y.toFixed(0)}|${sz.z.toFixed(0)}`;
     if (key !== this.freeKey && this.controls) {
       this.freeKey = key;
       const d = Math.max(sz.x, sz.z, sz.y) * 1.9;
-      this.camera.position.set(c.x - d * 0.35, c.y - d, c.z + d * 0.25);
+      this.camera.position.set(c.x - d * 0.35, c.y - d, c.z + d * 0.3);
       this.controls.target.copy(c); this.controls.update();
       this.size = [0, 0]; this.framed = false;
     }
     this.render();
   }
-  private freeKey = "";
+  private bloomScale = 1;
   setLit(lit: boolean) {
     if (!this.mesh || !this.free) return;
-    (this.mesh.material as THREE.Material).dispose();
-    this.mesh.material = lit
-      ? new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })
-      : new THREE.MeshStandardMaterial({ color: this.free.plain, roughness: 0.6, metalness: 0, side: THREE.DoubleSide });
+    this.free.on = lit;
+    this.mesh.material = lit ? this.free.lit : this.free.plain;
+    this.free.ground.visible = lit;
     this.render();
   }
 
+  private renderFree() {
+    const r = this.renderer!;
+    if (!this.free!.on) { r.setScissorTest(false); r.render(this.scene, this.camera); return; }
+    const box = this.el.getBoundingClientRect();
+    if (!this.composer) {
+      this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }));
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(box.width, box.height), 0.6, 0.7, 0.55);
+      this.composer.addPass(this.bloom);
+      this.composer.addPass(new OutputPass());
+    }
+    this.composer.setPixelRatio(r.getPixelRatio());
+    this.composer.setSize(box.width, box.height);
+    this.bloom!.strength = 0.55 * this.bloomScale;
+    const bg = this.scene.background, tm = r.toneMapping, ex = r.toneMappingExposure;
+    this.scene.background = new THREE.Color(0x020203);
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
+    this.composer.render();
+    this.scene.background = bg; r.toneMapping = tm; r.toneMappingExposure = ex;
+  }
+
   clear() {
+    if (this.free) { this.scene.remove(this.free.ground); this.free.ground.geometry.dispose(); this.free.lit.dispose(); this.free.plain.dispose(); }
     this.free = null;
     if (this.mesh) { this.scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh = null; }
     if (this.meshOrig) { this.scene.remove(this.meshOrig); this.meshOrig.geometry.dispose(); this.meshOrig = null; }
@@ -214,6 +334,7 @@ export class ModelView {
     this.pending = true;
     requestAnimationFrame(() => {
       this.pending = false;
+      if (this.free && this.mesh) { this.renderFree(); return; }
       const r = this.renderer!, m = this.mesh, o = this.meshOrig;
       if (!this.comparing || !m || !o) { r.setScissorTest(false); if (o) o.visible = false; if (m) m.visible = true; r.render(this.scene, this.camera); return; }
       const box = this.el.getBoundingClientRect(), x = Math.round(box.width * this.split);
