@@ -81,17 +81,21 @@ export class ModelView {
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.scale.z = this.zScale;
     this.scene.add(this.mesh);
-    // Zweites Netz mit den Farben des Originalbilds (gleiche Form) für den Vergleich
+    // Zweites Netz für den Vergleich: das flache Originalbild (ohne Relief, unbeleuchtet wie ein Foto)
     if (this.meshOrig) { this.scene.remove(this.meshOrig); this.meshOrig.geometry.dispose(); this.meshOrig = null; }
     if (m.orig) {
       const g2 = new THREE.BufferGeometry();
-      g2.setAttribute("position", geo.getAttribute("position"));
-      g2.setAttribute("normal", geo.getAttribute("normal"));
+      const flat = pos.slice();
+      let zMin = Infinity;
+      if (this.top) for (let i = 0; i < this.top.length; i++) if (this.top[i] >= 0 && pos[i * 3 + 2] < zMin) zMin = pos[i * 3 + 2];
+      if (!Number.isFinite(zMin)) zMin = 0.2;
+      for (let i = 0; i < flat.length / 3; i++) flat[i * 3 + 2] = this.top && this.top[i] >= 0 ? zMin : 0;
+      g2.setAttribute("position", new THREE.BufferAttribute(flat, 3));
       const oc = new Float32Array(m.orig);
       for (let i = 0; i < oc.length; i++) oc[i] = srgbToLinear(oc[i]);
       g2.setAttribute("color", new THREE.BufferAttribute(oc, 3));
       g2.setIndex(geo.getIndex());
-      this.meshOrig = new THREE.Mesh(g2, mat);
+      this.meshOrig = new THREE.Mesh(g2, new THREE.MeshBasicMaterial({ vertexColors: true }));
       this.meshOrig.scale.z = this.zScale;
       this.meshOrig.visible = false;
       this.scene.add(this.meshOrig);
@@ -133,7 +137,7 @@ export class ModelView {
 
   setZScale(z: number) { this.zScale = z; if (this.mesh) this.mesh.scale.z = z; if (this.meshOrig) this.meshOrig.scale.z = z; this.render(); }
 
-  /** Vergleich: links vom Teiler das Relief in den Farben des Originalbilds, rechts der simulierte Druck. */
+  /** Vergleich: links vom Teiler das flache Originalbild, rechts der Druck als Relief. */
   setCompare(on: boolean) {
     this.comparing = on;
     this.divider.style.display = on ? "" : "none";

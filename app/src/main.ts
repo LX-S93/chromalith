@@ -234,11 +234,11 @@ const compareBtn = button("Vergleich", () => { compareOn = !compareOn; store.set
 viewPreview.el.append(h("div", { class: "view-tools" }, compareBtn));
 let compare3d = store.get("compare3d", false);
 const compare3dBtn = button("Vergleich", () => { compare3d = !compare3d; store.set("compare3d", compare3d); updateCompare3d(); },
-  { icon: "swap", cls: "small", title: "Links vom Teiler das Relief in den Farben des Originalbilds, rechts der simulierte Druck. Teiler mit der Maus verschieben." });
+  { icon: "swap", cls: "small", title: "Links vom Teiler das flache Originalbild, rechts der Druck als Relief mit Tiefe. Teiler mit der Maus verschieben." });
 view3d.el.append(h("div", { class: "view-tools", style: { top: "44px" } }, compare3dBtn));
 function updateCompare3d() {
   compare3dBtn.classList.toggle("on", compare3d);
-  compare3dBtn.textContent = ""; compare3dBtn.append(icon("swap"), compare3d ? "Vergleich: links Original, rechts Druck" : "Vergleich");
+  compare3dBtn.textContent = ""; compare3dBtn.append(icon("swap"), compare3d ? "Vergleich: links flaches Original, rechts Relief" : "Vergleich");
   view3d.setCompare(compare3d);
 }
 updateCompare3d();

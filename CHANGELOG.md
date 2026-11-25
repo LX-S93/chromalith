@@ -2,6 +2,12 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.13.1 – 2026-11-25
+
+- **Vergleich in der 3D-Ansicht umgebaut**: Links vom Teiler liegt jetzt das flache Originalbild (2D, ohne
+  Relief), rechts direkt daneben der Druck als Relief mit Tiefe. So zeigt ein einziges Bild, welchen
+  Unterschied die Tiefe macht.
+
 ## 0.13.0 – 2026-11-25
 
 - **Vergleichs-Teiler in der 3D-Ansicht**: Knopf „Vergleich“ oben links in der 3D-Ansicht. Links vom Teiler
