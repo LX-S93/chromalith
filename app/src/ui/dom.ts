@@ -41,6 +41,8 @@ const ICONS: Record<string, string> = {
   library: '<path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l4 1-3 14-4-1z"/>',
   upload: '<path d="M12 21V9m0 0-5 5m5-5 5 5M4 3h16"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
   file: '<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5"/>',
 };
 export function icon(name: string): SVGElement {

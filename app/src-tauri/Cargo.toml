@@ -1,6 +1,6 @@
 [package]
 name = "chromalith"
-version = "0.8.0"
+version = "0.9.0"
 description = "Chromalith – farbige Reliefbilder aus Filament-Schichten"
 edition = "2021"
 

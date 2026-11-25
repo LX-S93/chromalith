@@ -95,6 +95,8 @@ const sl = (k: keyof HeightSettings, label: string, lo: number, hi: number, step
   (fields[k] = sliderField(label, lo, hi, step, unit, (v) => setSetting(k, v as any), tip, dec)).el;
 
 // Kopfzeile
+const undoBtn = button(null, () => undo(), { icon: "undo", cls: "ghost", title: "Rückgängig (Strg+Z)" });
+const redoBtn = button(null, () => redo(), { icon: "redo", cls: "ghost", title: "Wiederholen (Strg+Y / Strg+Umschalt+Z)" });
 const modeButtons = new Map<string, HTMLButtonElement>();
 const modePill = h("div", { class: "mode-pill", title: "Woraus die Höhe entsteht" });
 for (const [k, label] of [["auto", "Auto"], ["bright_high", "Hell hoch"], ["dark_high", "Dunkel hoch"], ["color", "Farbtreu"]] as const) {
@@ -119,6 +121,7 @@ const topbar = h("header", { class: "topbar" },
   button("Bild öffnen", openImage, { icon: "image", title: "Bild öffnen (Strg+O)" }),
   button("Projekt öffnen", openProject, { icon: "folder", title: "Projekt öffnen (Strg+Umschalt+O)" }),
   button("Speichern", () => saveProject(false), { icon: "save", title: "Projekt speichern (Strg+S)" }),
+  undoBtn, redoBtn,
   button("Filamente", () => openLibrary(libHost).then(() => refreshAnalysis()), { icon: "library", title: "Filament-Bibliothek: suchen, bearbeiten, importieren (Strg+L)" }),
   h("div", { class: "spacer" }),
   modePill,
@@ -263,6 +266,51 @@ function syncShapeFields() {
   fields.numbers_mm!.el.style.display = state.settings.clock_numbers ? "" : "none";
   fields.clock_numbers!.el.title = round ? "" : "Ziffern werden auf dem größten Kreis im Bild verteilt.";
 }
+// ------------------------------------------------------------------ Rückgängig / Wiederholen
+const hist = { stack: [] as string[], pos: -1, timer: 0, restoring: false };
+const snap = () => JSON.stringify({ settings: state.settings, stops: state.stops, islands: state.islands });
+function updateUndoButtons() {
+  undoBtn.disabled = hist.pos <= 0;
+  redoBtn.disabled = hist.pos >= hist.stack.length - 1;
+}
+function commitHistory() {
+  clearTimeout(hist.timer);
+  const sn = snap();
+  if (hist.stack[hist.pos] === sn) return;
+  hist.stack.splice(hist.pos + 1);
+  hist.stack.push(sn);
+  if (hist.stack.length > 200) hist.stack.shift();
+  hist.pos = hist.stack.length - 1;
+  updateUndoButtons();
+}
+/** Änderung merken (kurz zusammengefasst, damit ein Schieberegler-Zug ein Schritt ist). */
+function noteChange() {
+  if (hist.restoring) return;
+  clearTimeout(hist.timer);
+  hist.timer = window.setTimeout(commitHistory, 450);
+}
+function resetHistory() { clearTimeout(hist.timer); hist.stack = [snap()]; hist.pos = 0; updateUndoButtons(); }
+function restoreHistory(sn: string) {
+  const d = JSON.parse(sn);
+  hist.restoring = true;
+  state.settings = d.settings;
+  state.stops.splice(0, state.stops.length, ...d.stops);
+  state.islands.splice(0, state.islands.length, ...d.islands);
+  syncFields(); stack.render(); islandPanel.render(); markDirty(); schedule(60);
+  hist.restoring = false;
+  updateUndoButtons();
+}
+function undo() {
+  commitHistory();
+  if (hist.pos <= 0) return;
+  hist.pos--; restoreHistory(hist.stack[hist.pos]);
+}
+function redo() {
+  clearTimeout(hist.timer);
+  if (hist.pos >= hist.stack.length - 1) return;
+  hist.pos++; restoreHistory(hist.stack[hist.pos]);
+}
+
 function markDirty() { if (!state.dirty) { state.dirty = true; updateTitle(); } }
 function updateTitle() {
   const name = state.path ? state.path.split(/[\\/]/).pop() : state.name;
@@ -273,7 +321,7 @@ function updateTitle() {
 
 // ------------------------------------------------------------------ Berechnung
 let timer = 0, running = false, queued = false;
-function schedule(delay = 140) { clearTimeout(timer); timer = window.setTimeout(rebuild, delay); }
+function schedule(delay = 140) { noteChange(); clearTimeout(timer); timer = window.setTimeout(rebuild, delay); }
 
 async function rebuild() {
   if (!state.image) return;
@@ -311,7 +359,7 @@ async function autoDistribute() {
     compute.setIslands(state.islands);
   const { stops } = await compute.autoDistribute(state.settings, state.stops);
     state.stops.splice(0, state.stops.length, ...stops.sort((a, b) => a.start_layer - b.start_layer));
-    stack.render(); markDirty(); await rebuild();
+    stack.render(); markDirty(); noteChange(); await rebuild();
   } catch (e: any) { toast("Automatisch verteilen fehlgeschlagen: " + e.message, "err"); }
   finally { if (!running) busy.classList.remove("on"); }
 }
@@ -387,6 +435,7 @@ async function loadImageBytes(name: string, bytes: Uint8Array) {
   markDirty(); updateTitle();
   await rebuild();
   if (first) await autoDistribute();
+  resetHistory();
 }
 
 async function openImage() {
@@ -412,6 +461,7 @@ async function loadProjectBytes(name: string, bytes: Uint8Array, path: string | 
     if (p.imagePng) await setImage(await decodeImage(p.imagePng), p.imagePng);
     stack.render();
     await rebuild();
+    resetHistory();
     state.dirty = false; updateTitle();
     toast(`Projekt „${state.name}“ geladen.`, "ok");
   } catch (e: any) { toast("Projekt konnte nicht geladen werden: " + e.message, "err"); }
@@ -459,6 +509,7 @@ async function newProject() {
   await compute.setImage(null);
   viewPreview.clear(); viewOriginal.clear(); view3d.clear();
   syncFields(); stack.render(); refreshAnalysis(); showTab(0);
+  resetHistory();
   state.dirty = false; updateTitle();
   setStatus(["Bild öffnen (Strg+O) oder Bild ins Fenster ziehen, um zu beginnen."]);
 }
@@ -544,6 +595,14 @@ document.addEventListener("drop", (e) => e.preventDefault());
 document.addEventListener("keydown", (e) => {
   if (!(e.ctrlKey || e.metaKey) || document.querySelector(".modal-back")) return;
   const k = e.key.toLowerCase();
+  const t = e.target as HTMLElement;
+  const typing = t instanceof HTMLInputElement && (t.type === "text" || t.type === "search");
+  if ((k === "z" || k === "y") && !typing) {
+    e.preventDefault();
+    if (t instanceof HTMLInputElement) t.blur();
+    (k === "y" || e.shiftKey) ? redo() : undo();
+    return;
+  }
   const map: Record<string, () => void> = {
     o: e.shiftKey ? openProject : openImage, s: () => saveProject(e.shiftKey), e: exportAll, n: newProject,
     l: () => openLibrary(libHost).then(() => refreshAnalysis()),
@@ -562,6 +621,8 @@ if (isTauri()) {
 } else {
   window.addEventListener("beforeunload", (e) => { if (state.dirty && state.image) e.preventDefault(); });
 }
+
+resetHistory();
 
 // für Tests/Fehlersuche
 (window as any).chromalith = { state, rebuild, loadProjectBytes, loadImageBytes, editFilament, fromRGBA8 };

@@ -30,12 +30,13 @@ button, input, select { font: inherit; color: inherit; }
 .mode-pill button { border: 0; background: transparent; padding: 6px 12px; cursor: pointer; color: var(--muted); }
 .mode-pill button.active { background: var(--accent); color: white; }
 .menu { position: relative; }
-.menu-list { position: absolute; right: 0; top: 38px; min-width: 260px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px;
+.menu-list { position: absolute; right: 0; top: 38px; min-width: 330px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px;
   padding: 6px; box-shadow: 0 12px 40px #0009; z-index: 30; display: none; }
 .menu.open .menu-list { display: block; }
-.menu-list button { display: flex; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: none; border-radius: 6px; cursor: pointer; gap: 10px; }
+.menu-list button { white-space: nowrap; align-items: center; display: flex; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: none; border-radius: 6px; cursor: pointer; gap: 10px; }
 .menu-list button:hover { background: #2a2d3a; }
-.menu-list kbd { margin-left: auto; color: var(--muted); font-size: 11px; }
+.menu-list svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
+.menu-list kbd { font-family: inherit; padding-left: 16px; margin-left: auto; color: var(--muted); font-size: 11px; }
 
 /* Seitenleisten */
 .left, .right { background: var(--panel); overflow-y: auto; border-right: 1px solid var(--line); }

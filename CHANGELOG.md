@@ -2,6 +2,16 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.9.0 – 2026-11-25
+
+### Neu
+- **Rückgängig / Wiederholen** für alle Änderungen an Einstellungen, Filament-Stapel und Farbinseln:
+  Knöpfe oben in der Leiste sowie Strg+Z und Strg+Y (oder Strg+Umschalt+Z). Ein Zug am Schieberegler
+  zählt als ein Schritt.
+
+### Behoben
+- Das „…“-Menü zeigte riesige Symbole; jetzt normale Größe, Einträge ohne Zeilenumbruch.
+
 ## 0.8.0 – 2026-11-25
 
 ### Geändert
