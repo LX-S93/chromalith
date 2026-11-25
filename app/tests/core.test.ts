@@ -197,15 +197,16 @@ it("3MF: gültiges ZIP mit Modell und Farbwechseln", async () => {
   const mesh = heightmapToMesh(hm);
   const ch = colorChanges(hm, stops);
   expect(ch).toHaveLength(1);
-  expect(ch[0].z).toBeCloseTo(0.16 + 11 * 0.08, 5);
+  expect(ch[0].z).toBeCloseTo(s.base_layer_mm + 11 * 0.08, 5);
   const files = await unzip(await write3mf(mesh, hm, stops, "Test & <1>"));
   expect([...files.keys()]).toContain("3D/3dmodel.model");
-  const model = files.get("3D/3dmodel.model")!;
+  expect(files.get("3D/3dmodel.model")).toContain("Test &amp; &lt;1&gt;");
+  expect(files.get("3D/3dmodel.model")).toContain('p:path="/3D/Objects/object_1.model"');
+  expect(files.get("Metadata/model_settings.config")).toContain('key="layer_height" value="0.08"');
+  const model = files.get("3D/Objects/object_1.model")!;
   expect((model.match(/<vertex /g) ?? []).length).toBe(mesh.vertices.length / 3);
   expect((model.match(/<triangle /g) ?? []).length).toBe(mesh.faces.length / 3);
-  expect(model).toContain("Test &amp; &lt;1&gt;");
-  expect(files.get("Metadata/Prusa_Slicer_custom_gcode_per_print_z.xml")).toContain('print_z="1.04"');
-  expect(files.get("Metadata/custom_gcode_per_layer.xml")).toContain('top_z="1.04"');
+  expect(files.get("Metadata/custom_gcode_per_layer.xml")).toContain(`top_z="${+(s.base_layer_mm + 11 * 0.08).toFixed(4)}"`);
 });
 
 import { applyIslands, effectiveStops } from "../src/core";

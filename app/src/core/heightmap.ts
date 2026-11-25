@@ -50,7 +50,7 @@ export interface HeightSettings {
 
 export const DEFAULT_SETTINGS: HeightSettings = {
   width_mm: 100, pixel_size_mm: 0.2, min_height_mm: 0.48, max_height_mm: 2.24,
-  base_layer_mm: 0.16, layer_height_mm: 0.08, luma_method: "rec709", linearize: false,
+  base_layer_mm: 0.2, layer_height_mm: 0.08, luma_method: "rec709", linearize: false,
   height_mode: "auto", brightness: 0, contrast: 1, gamma: 1, smoothing_px: 0, detail_mm: 0,
   border_mm: 0, border_height_mm: 0, shape: "rect", hole_mm: 0, rim_mm: 0, raise_mm: 0.6,
   clock_numbers: false, numbers_mm: 12,

@@ -483,8 +483,9 @@ async function exportAll() {
       h("p", { style: { marginTop: 0 } }, "Geschrieben:"),
       h("ul", { style: { paddingLeft: "18px", lineHeight: "1.7" } }, ...files.map((f) => h("li", null, f.split(/[\\/]/).pop()!))),
       h("p", { class: "hint" }, `STL ${(stl.length / 1e6).toFixed(1)} MB, 3MF ${(r.threemf.byteLength / 1e6).toFixed(1)} MB.`),
-      h("p", { class: "hint" }, "Die 3MF enthält die Farbwechsel schon (PrusaSlicer, Bambu Studio, OrcaSlicer: einfach öffnen). Im Slicer nur noch die erste Schicht auf " +
-        `${state.settings.base_layer_mm.toFixed(2)} mm und die Schichthöhe auf ${state.settings.layer_height_mm.toFixed(2)} mm stellen. Für andere Slicer stehen die Wechsel in der _farbwechsel.txt.`),
+      h("p", { class: "hint" }, "Bambu Studio / OrcaSlicer: die .3mf öffnen (bei Nachfrage als Projekt laden). Die Farbwechsel stehen dann schon im Schicht-Regler. " +
+        `Im Prozess muss die erste Schicht ${state.settings.base_layer_mm.toFixed(2)} mm und die Schichthöhe ${state.settings.layer_height_mm.toFixed(2)} mm sein ` +
+        "(die Schichthöhe ist am Objekt schon eingetragen). Für andere Slicer stehen die Wechsel in der _farbwechsel.txt."),
       h("pre", { style: { background: "var(--bg)", padding: "10px", borderRadius: "8px", maxHeight: "260px", overflow: "auto", fontSize: "12px" } }, r.report)),
       [button("OK", () => close(), { cls: "primary" })]);
   } catch (e: any) { toast("Export fehlgeschlagen: " + e.message, "err"); }

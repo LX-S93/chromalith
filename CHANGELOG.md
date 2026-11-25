@@ -2,6 +2,15 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.8.0 – 2026-11-25
+
+### Geändert
+- **3MF für Bambu Studio und OrcaSlicer:** Die exportierte `.3mf` ist jetzt wie ein Bambu-Projekt
+  aufgebaut (Objekt auf Platte 1, mittig auf 256-mm-Bett, Schichthöhe am Objekt, Farbwechsel mit
+  Filamentfarbe im Schicht-Regler). Beim Öffnen „als Projekt laden“ wählen.
+- Standard für die erste Schicht ist jetzt **0,20 mm** (passt zu den Bambu-Prozessprofilen),
+  danach weiter 0,08 mm. Bestehende Projekte behalten ihre Werte.
+
 ## 0.7.0 – 2026-11-25
 
 ### Verbessert
