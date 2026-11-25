@@ -1,9 +1,9 @@
 /** Dialog „Filamente vorschlagen“: bestes Set aus der Bibliothek für das aktuelle Bild. */
-import { filamentLabel, type ColorStop, type Filament, type HeightSettings } from "../core";
+import { filamentLabel, materialFamily, type ColorStop, type Filament, type HeightSettings } from "../core";
 import * as compute from "../compute";
 import { store } from "../platform";
 import { button, clear, h, modal } from "./dom";
-import { sliderField, switchField } from "./fields";
+import { selectField, sliderField, switchField } from "./fields";
 
 const quality = (e: number) => (e < 8 ? "sehr gut" : e < 12 ? "gut" : e < 18 ? "mittel" : "grob");
 
@@ -25,12 +25,21 @@ export function openSuggest(settings: HeightSettings, current: ColorStop[], libr
   let count = store.get("suggestCount", 6);
   let ownedOnly = store.get("suggestOwned", false);
   const ownedN = library.filter((f) => f.owned).length;
-  const countF = sliderField("Anzahl Filamente", 2, 10, 1, "", (v) => { count = v; store.set("suggestCount", v); }, "Höchstens so viele Filamente. Bringt ein weiteres keine Verbesserung, schlägt Chromalith weniger vor.");
+  const countF = sliderField("Anzahl Filamente", 2, 10, 1, "", (v) => { count = v; store.set("suggestCount", v); }, "So viele Filamente soll der Vorschlag enthalten.");
   countF.set(count);
   const ownF = switchField(`Nur vorhandene Filamente (${ownedN})`, (v) => { ownedOnly = v; store.set("suggestOwned", v); },
     "Nur Filamente, die in der Bibliothek als „Vorhanden“ markiert sind.");
   ownF.set(ownedOnly && ownedN >= 2);
   if (ownedN < 2) { (ownF.el.querySelector("input") as HTMLInputElement).disabled = true; ownedOnly = false; }
+  // Material: gemischte Materialien lassen sich schlecht zusammen drucken, deshalb standardmäßig nur eines
+  const famCount = new Map<string, number>();
+  for (const f of library) { const k = materialFamily(f.material); famCount.set(k, (famCount.get(k) ?? 0) + 1); }
+  const fams = [...famCount.entries()].sort((a, b) => b[1] - a[1]);
+  let material = store.get("suggestMaterial", fams.length > 1 && fams[0][1] >= 6 ? fams[0][0] : "");
+  if (material && (famCount.get(material) ?? 0) < 2) material = "";
+  const matF = selectField("Material", { "": `Alle Materialien (${library.length})`, ...Object.fromEntries(fams.map(([k, n]) => [k, `Nur ${k} (${n})`])) },
+    (v) => { material = v; store.set("suggestMaterial", v); }, "Verschiedene Materialien (z. B. PLA und PETG) haften schlecht aufeinander. Am besten bei einem Material bleiben.");
+  matF.set(material);
   const bar = h("i", { style: { width: "0%", background: "var(--accent)" } });
   const progress = h("div", { style: { display: "none", gap: "6px" } }, h("div", { class: "hint" }, "Suche das beste Set … (dauert einige Sekunden)"), h("div", { class: "bar" }, bar));
   const result = h("div");
@@ -39,12 +48,13 @@ export function openSuggest(settings: HeightSettings, current: ColorStop[], libr
   applyBtn.disabled = true;
   const content = h("div", { style: { display: "grid", gap: "14px" } },
     h("p", { class: "hint", style: { margin: 0 } }, `Chromalith probiert Filamente aus deiner Bibliothek (${library.length}) durch und sucht das Set samt Reihenfolge und Wechsel-Schichten, mit dem die Farben des Bildes am besten getroffen werden.`),
-    h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", alignItems: "end" } }, countF.el, ownF.el),
+    h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", alignItems: "end" } }, countF.el, matF.el, ownF.el),
     h("div", null, go), progress, result);
   const close = modal("Filamente vorschlagen", content, [button("Schließen", () => close()), applyBtn]);
 
   async function run() {
-    const lib = ownedOnly ? library.filter((f) => f.owned) : library;
+    const lib = library.filter((f) => (!ownedOnly || f.owned) && (!material || materialFamily(f.material) === material));
+    if (lib.length < 2) { clear(result); result.append(h("p", { class: "hint warn" }, "Mit diesen Filtern bleiben zu wenige Filamente übrig.")); return; }
     go.disabled = true; applyBtn.disabled = true; clear(result);
     progress.style.display = "grid"; bar.style.width = "0%";
     try {
@@ -61,7 +71,7 @@ export function openSuggest(settings: HeightSettings, current: ColorStop[], libr
           h("div", null, h("h3", { style: { margin: "0 0 6px", fontSize: "13px" } }, `Vorschlag: ${r.stops.length} Filamente`), canvasOf(sug),
             h("p", { class: "hint" }, `Ø Farbabweichung ${r.error.toFixed(1)} (${quality(r.error)})${better > 0.5 ? ` · ${Math.round((better / r.currentError!) * 100)} % näher am Bild` : ""}`),
             stackList(r.stops))),
-        r.stops.length < count ? h("p", { class: "hint" }, `Mehr als ${r.stops.length} Filamente verbessern das Ergebnis kaum, deshalb nur ${r.stops.length}.`) : "",
+        r.stops.length < count ? h("p", { class: "hint" }, `Ein weiteres Filament würde das Ergebnis verschlechtern (oder die Bibliothek hat keine passenden mehr), deshalb nur ${r.stops.length}.`) : "",
         h("p", { class: "hint" }, "„Übernehmen“ ersetzt den Stapel und stellt die Höhe auf „Farbtreu“. Die Farbabweichung ist der mittlere Abstand im Lab-Farbraum: unter 8 ist kaum ein Unterschied zu sehen."));
       applyBtn.disabled = false;
       applyBtn.onclick = () => { apply(r.stops.map((s) => ({ filament: { ...s.filament }, start_layer: s.start_layer }))); close(); };

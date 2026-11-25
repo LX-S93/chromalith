@@ -325,3 +325,18 @@ describe("Motiv skalieren", () => {
     expect(normalizeSettings({ width_mm: 50 } as any).image_scale).toBe(1);
   });
 });
+
+describe("Filament-Vorschlag", () => {
+  it("deckt kleine, kräftige Farben trotz großem Hintergrund ab und hält die Anzahl ein", () => {
+    // 100×100 weiß, darin kleine Farbfelder (zusammen ca. 10 % der Fläche)
+    const w = 100, h = 100, rgb = new Float32Array(w * h * 3).fill(1);
+    const patches: [number, number, number][] = [[0.8, 0.1, 0.1], [0.1, 0.5, 0.15], [0.1, 0.2, 0.7], [0.95, 0.8, 0.1], [0.05, 0.05, 0.05]];
+    patches.forEach((c, k) => { for (let y = 40; y < 55; y++) for (let x = 10 + k * 16; x < 24 + k * 16; x++) rgb.set(c, (y * w + x) * 3); });
+    const lib = starterLibrary();
+    const o = { count: 7, base: 0.2, step: 0.08, minH: 0.48, maxH: 2.24 };
+    const r = suggestFilaments(labSample(rgb, w, h, 72), rgb, lib, o)!;
+    expect(r.stops.length).toBe(7);
+    const names = r.stops.map((s) => s.filament.name).join(" ");
+    for (const n of ["Rot", "Blau", "Grün"]) expect(names).toContain(n);
+  });
+});

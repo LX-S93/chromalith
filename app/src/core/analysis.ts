@@ -74,6 +74,13 @@ export function filamentUsage(hm: HeightMap, stops: ColorStop[]) {
   });
 }
 
+/** Materialfamilie für Filter: „PLA+“, „PLA Matte“ und „PLA-CF“ zählen zu PLA usw. */
+export function materialFamily(material: string): string {
+  const m = material.toUpperCase().trim();
+  for (const f of ["PETG", "PLA", "ABS", "ASA", "TPU", "PC", "PA"]) if (m.startsWith(f)) return f;
+  return m || "PLA";
+}
+
 /** Dichte in g/cm³ nach Material (Näherung). */
 export function materialDensity(material: string): number {
   const m = material.toUpperCase();

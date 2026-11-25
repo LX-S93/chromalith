@@ -40,7 +40,7 @@ export function candidates(rgb: Float32Array, library: Filament[], max = 36): Fi
 }
 
 /** Gierige Auswahl mit Einfügeposition und anschließender Tauschrunde.
- *  Bringt ein weiteres Filament keine Verbesserung, bleibt das Set kleiner. */
+ *  Die gewünschte Anzahl wird eingehalten, solange ein weiteres Filament das Ergebnis nicht verschlechtert. */
 export function suggestFilaments(lab: Float32Array, rgb: Float32Array, library: Filament[], o: SuggestOptions): Suggestion | null {
   const cand = candidates(rgb, library, o.maxCandidates ?? 30);
   if (cand.length < 2) return null;
@@ -71,7 +71,7 @@ export function suggestFilaments(lab: Float32Array, rgb: Float32Array, library: 
         if (e < bestE) { bestE = e; bestO = trial; }
       }
     }
-    if (!bestO || bestE >= best - 0.05) break; // keine echte Verbesserung mehr
+    if (!bestO || bestE > best + 0.02) break; // nur abbrechen, wenn ein weiteres Filament das Ergebnis verschlechtert
     order = bestO; best = bestE;
   }
   // Tauschrunde: jedes Filament probeweise durch jeden Kandidaten ersetzen

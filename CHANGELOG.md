@@ -2,6 +2,16 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.13.2 – 2026-11-25
+
+- **Filament-Vorschläge treffen jetzt auch kleine, kräftige Farben**: Bei einem kleinen Motiv auf großem
+  Hintergrund (z. B. Uhr) hat der Hintergrund bisher alles überstimmt, sodass z. B. Rot ganz fehlte. Jede
+  Farbgruppe des Bildes zählt jetzt ausgeglichen. Das gilt auch für „Automatisch verteilen“ im farbtreuen Modus.
+- **Gewünschte Anzahl wird eingehalten**: Wer 7 Filamente wählt, bekommt 7 – außer ein weiteres würde das
+  Ergebnis verschlechtern.
+- **Material wählbar**: Der Vorschlag bleibt standardmäßig bei einem Material (dem häufigsten der Bibliothek,
+  meist PLA), statt PLA, PETG und ABS zu mischen. „Alle Materialien“ lässt sich weiterhin wählen.
+
 ## 0.13.1 – 2026-11-25
 
 - **Vergleich in der 3D-Ansicht umgebaut**: Links vom Teiler liegt jetzt das flache Originalbild (2D, ohne

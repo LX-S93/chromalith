@@ -43,7 +43,7 @@ export function colorError(lab: Float32Array, stops: ColorStop[], base: number, 
 }
 
 /** Kleine Lab-Stichprobe eines Bildes (höchstens maxSide Punkte je Seite). */
-export function labSample(rgb: Float32Array, w: number, h: number, maxSide: number, alpha?: Float32Array): Float32Array {
+export function labSample(rgb: Float32Array, w: number, h: number, maxSide: number, alpha?: Float32Array, balanced = true): Float32Array {
   const f = Math.max(1, Math.ceil(Math.max(w, h) / maxSide));
   const sm: number[] = [];
   for (let y = 0; y < h; y += f) for (let x = 0; x < w; x += f) {
@@ -51,7 +51,25 @@ export function labSample(rgb: Float32Array, w: number, h: number, maxSide: numb
     if (alpha && alpha[p] < 0.5) continue;
     sm.push(rgb[p * 3], rgb[p * 3 + 1], rgb[p * 3 + 2]);
   }
-  return labArray(Float32Array.from(sm));
+  const lab = labArray(Float32Array.from(sm));
+  return balanced ? balanceSamples(lab) : lab;
+}
+
+/** Gleicht die Stichprobe aus, damit große einfarbige Flächen (z. B. ein weißer Hintergrund) kleine, aber
+ *  wichtige Farben des Motivs nicht erdrücken: Jede Farbgruppe zählt nur noch mit der Wurzel ihrer Fläche. */
+export function balanceSamples(lab: Float32Array, cell = 14): Float32Array {
+  const bins = new Map<string, number[]>();
+  for (let i = 0; i < lab.length; i += 3) {
+    const k = `${Math.round(lab[i] / cell)},${Math.round(lab[i + 1] / cell)},${Math.round(lab[i + 2] / cell)}`;
+    let b = bins.get(k); if (!b) bins.set(k, (b = []));
+    b.push(i);
+  }
+  const out: number[] = [];
+  for (const b of bins.values()) {
+    const keep = Math.min(b.length, Math.ceil(Math.sqrt(b.length) * 4));
+    for (let j = 0; j < keep; j++) { const i = b[Math.floor((j * b.length) / keep)]; out.push(lab[i], lab[i + 1], lab[i + 2]); }
+  }
+  return Float32Array.from(out);
 }
 
 /** Wechsel-Schichten (Koordinatenabstieg) für Filamente in fester Reihenfolge; liefert Startschichten und Fehler. */

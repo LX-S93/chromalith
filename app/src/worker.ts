@@ -83,9 +83,9 @@ self.onmessage = (ev: MessageEvent) => {
       transfer = [preview.buffer, mesh.vertices.buffer, mesh.faces.buffer, colors.buffer, orig.buffer, mesh.topIndex.buffer];
     } else if (type === "suggest") {
       if (!image) throw new Error("Kein Bild geladen.");
-      const s = previewSettings(ev.data.settings, 160);
+      const s = previewSettings(ev.data.settings, 220);
       const { w, h, rgb, alpha } = prepareImage(image, s);
-      const lab = labSample(rgb, w, h, 40, alpha);
+      const lab = labSample(rgb, w, h, 72, alpha);
       let last = 0;
       const r = suggestFilaments(lab, rgb, ev.data.library as Filament[], {
         count: ev.data.count, base: s.base_layer_mm, step: s.layer_height_mm, minH: s.min_height_mm, maxH: s.max_height_mm,
