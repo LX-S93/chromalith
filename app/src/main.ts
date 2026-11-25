@@ -4,7 +4,7 @@ import pkg from "../package.json";
 import {
   HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
   parseProject, serializeLibrary, serializeProject, starterLibrary, toRGBA8, validate, type ColorStop, type Filament,
-  type HeightSettings, type Raster,
+  type HeightSettings, type Island, type Raster,
 } from "./core";
 import * as compute from "./compute";
 import type { PreviewResult } from "./compute";
@@ -15,6 +15,7 @@ import { editFilament, openLibrary } from "./ui/library";
 import { findLibraryFolders, importFiles, readFolder } from "./ui/importer";
 import { StackPanel } from "./ui/stack";
 import { openSuggest } from "./ui/suggest";
+import { IslandPanel } from "./ui/islands";
 import { ImageView } from "./ui/view2d";
 import { ModelView } from "./ui/view3d";
 
@@ -31,6 +32,7 @@ const state = {
   imagePng: null as Uint8Array | null,
   settings: normalizeSettings(undefined) as HeightSettings,
   stops: [] as ColorStop[],
+  islands: [] as Island[],
   result: null as PreviewResult | null,
   previewRgba: null as Uint8ClampedArray | null,
   palette: [] as { color: string; share: number }[],
@@ -154,6 +156,20 @@ const left = h("aside", { class: "left" },
     sl("contrast", "Kontrast", 0, 4, 0.05, ""),
     sl("gamma", "Gamma", 0.2, 5, 0.05, "")));
 
+// Farbinseln
+let pickCallback: ((p: { x: number; y: number; color: string }) => void) | null = null;
+const islandPanel = new IslandPanel({
+  islands: state.islands, libHost,
+  pick: (cb) => {
+    if (!state.image) { toast("Bitte zuerst ein Bild öffnen."); return; }
+    pickCallback = cb; showTab(1);
+    viewOriginal.el.style.cursor = "crosshair";
+    toast("Klicke im Original auf den Bereich, der die eigene Farbe bekommen soll.");
+  },
+  changed: () => { markDirty(); schedule(); },
+});
+left.append(section("Farbinseln", false, islandPanel.el));
+
 // Mitte: Ansichten
 const viewPreview = new ImageView();
 const viewOriginal = new ImageView();
@@ -206,6 +222,15 @@ function setStatus(parts: (string | Node)[]) {
   for (const p of parts) status.append(typeof p === "string" ? h("span", { html: p }) : p);
   status.append(h("div", { class: "spacer" }), hover);
 }
+viewOriginal.onPick = (px, py) => {
+  if (!pickCallback || !state.image) return;
+  const img = state.image, ix = Math.min(img.width - 1, Math.floor(px)), iy = Math.min(img.height - 1, Math.floor(py));
+  const i = (iy * img.width + ix) * 4;
+  const hex = "#" + [0, 1, 2].map((c) => Math.round(img.data[i + c] * 255).toString(16).padStart(2, "0")).join("");
+  const cb = pickCallback; pickCallback = null; viewOriginal.el.style.cursor = "";
+  cb({ x: px / img.width, y: py / img.height, color: hex });
+  showTab(0);
+};
 viewPreview.onHover = (px, py) => {
   const r = state.result;
   if (!r || px < 0 || py < 0 || px > r.width || py > r.height) { hover.textContent = ""; return; }
@@ -255,6 +280,7 @@ async function rebuild() {
   if (running) { queued = true; return; }
   try { validate(state.settings); } catch (e: any) { setStatus([`⚠ ${e.message}`]); return; }
   running = true; busy.classList.add("on");
+  compute.setIslands(state.islands);
   try {
     const r = await compute.preview(state.settings, state.stops);
     state.result = r;
@@ -262,7 +288,7 @@ async function rebuild() {
     viewPreview.set(state.previewRgba, r.width, r.height);
     view3d.setMesh(r.mesh);
     const step = state.settings.layer_height_mm;
-    stack.setInfo({ layerCount: r.layerCount, minLayer: r.minLayer, base: state.settings.base_layer_mm, step, colorMode: r.mode === "color" });
+    stack.setInfo({ layerCount: r.stackLayers, minLayer: r.minLayer, base: state.settings.base_layer_mm, step, colorMode: r.mode === "color" });
     syncMode(r.mode);
     refreshAnalysis();
     const changes = Math.max(0, r.usage.length - 1);
@@ -282,7 +308,8 @@ async function autoDistribute() {
   if (!state.image) { toast("Bitte zuerst ein Bild öffnen."); return; }
   busy.classList.add("on");
   try {
-    const { stops } = await compute.autoDistribute(state.settings, state.stops);
+    compute.setIslands(state.islands);
+  const { stops } = await compute.autoDistribute(state.settings, state.stops);
     state.stops.splice(0, state.stops.length, ...stops.sort((a, b) => a.start_layer - b.start_layer));
     stack.render(); markDirty(); await rebuild();
   } catch (e: any) { toast("Automatisch verteilen fehlgeschlagen: " + e.message, "err"); }
@@ -378,6 +405,8 @@ async function loadProjectBytes(name: string, bytes: Uint8Array, path: string | 
     state.settings = p.settings;
     state.stops.splice(0, state.stops.length, ...p.stops.sort((a, b) => a.start_layer - b.start_layer));
     state.name = p.name || name.replace(/\.[^.]+$/, "");
+    state.islands.splice(0, state.islands.length, ...p.islands);
+    islandPanel.render();
     state.path = path;
     syncFields();
     if (p.imagePng) await setImage(await decodeImage(p.imagePng), p.imagePng);
@@ -403,7 +432,7 @@ async function openProject() {
 }
 
 function projectText() {
-  return serializeProject({ name: state.name, image: state.image, imagePng: state.imagePng, settings: state.settings, stops: state.stops });
+  return serializeProject({ name: state.name, image: state.image, imagePng: state.imagePng, settings: state.settings, stops: state.stops, islands: state.islands });
 }
 
 async function saveProject(saveAs: boolean) {
@@ -425,6 +454,7 @@ async function newProject() {
   if (!(await confirmDiscard())) return;
   state.image = null; state.imagePng = null; state.path = null; state.name = "Unbenannt"; state.result = null; state.palette = [];
   state.settings = normalizeSettings(undefined);
+  state.islands.splice(0); islandPanel.render();
   state.stops.forEach((s, i) => (s.start_layer = i + 1));
   await compute.setImage(null);
   viewPreview.clear(); viewOriginal.clear(); view3d.clear();
@@ -438,6 +468,7 @@ async function exportAll() {
   try { validate(state.settings); } catch (e: any) { toast(e.message, "err"); return; }
   busy.classList.add("on");
   try {
+    compute.setIslands(state.islands);
     const r = await compute.exportAll(state.settings, state.stops, state.name);
     const stl = new Uint8Array(r.stl);
     const path = await saveFile(`${state.name}.stl`, stl, [{ name: "STL", extensions: ["stl"] }]);

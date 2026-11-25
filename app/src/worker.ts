@@ -2,7 +2,7 @@
 /** Rechen-Worker: hält das Bild und rechnet Höhenkarte, Vorschau, Analyse und Export,
  *  ohne die Oberfläche zu blockieren. */
 import {
-  autoDistribute, buildProject, write3mf, colorError, labSample, prepareImage, suggestFilaments, type Filament, downsample, effectiveMode, filamentUsage, heightmapToMesh, imagePalette, layerCount,
+  autoDistribute, buildProject, write3mf, effectiveStops, type Island, colorError, labSample, prepareImage, suggestFilaments, type Filament, downsample, effectiveMode, filamentUsage, heightmapToMesh, imagePalette, layerCount,
   maxZ, minLayer, planJson, planReport, simulate, sizeMm, writeStl, type ColorStop, type DigitRenderer,
   type HeightSettings, type Project, type Raster,
 } from "./core";
@@ -31,8 +31,9 @@ const toRGBA = (rgb: Float32Array, n: number) => {
   return out;
 };
 
+let islands: Island[] = [];
 const project = (settings: HeightSettings, stops: ColorStop[], name = ""): Project =>
-  ({ name, image, imagePng: null, settings, stops });
+  ({ name, image, imagePng: null, settings, stops, islands });
 
 function previewSettings(s: HeightSettings, maxSide: number): HeightSettings {
   return { ...s, pixel_size_mm: Math.max(s.pixel_size_mm, s.width_mm / maxSide) };
@@ -40,6 +41,7 @@ function previewSettings(s: HeightSettings, maxSide: number): HeightSettings {
 
 self.onmessage = (ev: MessageEvent) => {
   const { id, type } = ev.data;
+  if (ev.data.islands) islands = ev.data.islands;
   try {
     let result: any, transfer: Transferable[] = [];
     if (type === "image") {
@@ -49,15 +51,16 @@ self.onmessage = (ev: MessageEvent) => {
       const s = previewSettings(ev.data.settings, ev.data.maxSide ?? 1200);
       const p = project(s, ev.data.stops);
       const hm = buildProject(p, renderDigits, s);
-      const sim = simulate(hm, p.stops);
+      const est = effectiveStops(hm, p.stops);
+      const sim = simulate(hm, est);
       const preview = toRGBA(sim, hm.width * hm.height);
       if (ev.data.lite) {
         (self as any).postMessage({ id, ok: true, result: { width: hm.width, height: hm.height, preview: preview.buffer } }, [preview.buffer]);
         return;
       }
-      const small = downsample(hm, ev.data.maxSide3d ?? 360);
+      const small = downsample(hm, ev.data.maxSide3d ?? 600);
       const mesh = heightmapToMesh(small);
-      const simSmall = simulate(small, p.stops);
+      const simSmall = simulate(small, est);
       const colors = new Float32Array((mesh.vertices.length / 3) * 3).fill(0.55);
       for (let v = 0; v < mesh.topIndex.length; v++) {
         const t = mesh.topIndex[v];
@@ -68,7 +71,7 @@ self.onmessage = (ev: MessageEvent) => {
       result = {
         width: hm.width, height: hm.height, preview: preview.buffer,
         layerCount: layerCount(hm), minLayer: minLayer(hm), size: sizeMm(hm), maxZ: maxZ(hm),
-        mode: effectiveMode(p), usage: filamentUsage(hm, p.stops),
+        mode: effectiveMode(p), usage: filamentUsage(hm, est), stackLayers: hm.restLayers ?? layerCount(hm),
         triangles: 2 * fullW * Math.round(fullW * hm.height / hm.width),
         mesh: { vertices: mesh.vertices.buffer, faces: mesh.faces.buffer, colors: colors.buffer, size: sizeMm(small) },
       };
@@ -93,13 +96,14 @@ self.onmessage = (ev: MessageEvent) => {
     } else if (type === "export") {
       const p = project(ev.data.settings, ev.data.stops, ev.data.name);
       const hm = buildProject(p, renderDigits);
+      const est = effectiveStops(hm, p.stops);
       const mesh = heightmapToMesh(hm);
       const stl = writeStl(mesh, `Chromalith ${ev.data.name}`);
-      const sim = simulate(hm, p.stops);
+      const sim = simulate(hm, est);
       const preview = toRGBA(sim, hm.width * hm.height);
-      write3mf(mesh, hm, p.stops, ev.data.name).then((tmf) => {
-        const result = { stl: stl.buffer, threemf: tmf.buffer, report: planReport(hm, p.stops, ev.data.name),
-          json: JSON.stringify(planJson(hm, p.stops), null, 2), preview: preview.buffer, width: hm.width, height: hm.height };
+      write3mf(mesh, hm, est, ev.data.name).then((tmf) => {
+        const result = { stl: stl.buffer, threemf: tmf.buffer, report: planReport(hm, est, ev.data.name),
+          json: JSON.stringify(planJson(hm, est), null, 2), preview: preview.buffer, width: hm.width, height: hm.height };
         (self as any).postMessage({ id, ok: true, result }, [stl.buffer, tmf.buffer, preview.buffer]);
       }, (e) => (self as any).postMessage({ id, ok: false, error: String(e?.message ?? e) }));
       return;

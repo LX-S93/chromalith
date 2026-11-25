@@ -71,7 +71,7 @@ export class ModelView {
     if (!this.controls) return;
     const [w, hh] = this.size;
     const c = new THREE.Vector3(w / 2, hh / 2, 0);
-    const d = Math.max(w, hh) * 1.55;
+    const d = Math.max(w, hh) * 1.9;
     this.camera.position.set(c.x, c.y - d * 0.75, d * 0.85);
     this.controls.target.copy(c);
     this.controls.update();

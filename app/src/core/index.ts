@@ -10,3 +10,4 @@ export * from "./project";
 export * from "./suggest";
 export * from "./threemf";
 export * from "./zip";
+export * from "./islands";

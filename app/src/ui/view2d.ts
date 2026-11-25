@@ -9,6 +9,9 @@ export class ImageView {
   private iw = 0; private ih = 0;
   /** mm pro Bildpunkt für die Anzeige der Mausposition */
   onHover?: (px: number, py: number) => void;
+  /** Klick (ohne Verschieben) an Bildposition */
+  onPick?: (px: number, py: number) => void;
+  get size() { return [this.iw, this.ih] as const; }
 
   constructor() {
     this.canvas = h("canvas");
@@ -26,7 +29,8 @@ export class ImageView {
       this.apply();
     }, { passive: false });
     let drag: { x: number; y: number } | null = null;
-    this.el.addEventListener("pointerdown", (e) => { drag = { x: e.clientX - this.x, y: e.clientY - this.y }; this.el.setPointerCapture(e.pointerId); this.el.style.cursor = "grabbing"; });
+    let down = { x: 0, y: 0 };
+    this.el.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; drag = { x: e.clientX - this.x, y: e.clientY - this.y }; this.el.setPointerCapture(e.pointerId); this.el.style.cursor = "grabbing"; });
     this.el.addEventListener("pointermove", (e) => {
       if (drag) { this.x = e.clientX - drag.x; this.y = e.clientY - drag.y; this.apply(); }
       if (this.onHover && this.iw) {
@@ -35,7 +39,14 @@ export class ImageView {
       }
     });
     const end = () => { drag = null; this.el.style.cursor = ""; };
-    this.el.addEventListener("pointerup", end);
+    this.el.addEventListener("pointerup", (e) => {
+      if (drag && this.onPick && this.iw && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 4) {
+        const r = this.el.getBoundingClientRect();
+        const px = (e.clientX - r.left - this.x) / this.scale, py = (e.clientY - r.top - this.y) / this.scale;
+        if (px >= 0 && py >= 0 && px < this.iw && py < this.ih) this.onPick(px, py);
+      }
+      end();
+    });
     this.el.addEventListener("pointercancel", end);
     this.el.addEventListener("dblclick", () => this.fit());
     new ResizeObserver(() => { if (!this.fitted) this.fit(); }).observe(this.el);

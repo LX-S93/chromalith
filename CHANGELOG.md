@@ -2,6 +2,23 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.7.0 – 2026-11-25
+
+### Verbessert
+- **Deutlich besseres Ergebnis direkt nach dem Laden:** „Automatisch verteilen“ legt die
+  Farbwechsel im Helligkeits-Modus jetzt so, dass die simulierte Helligkeit der Bildhelligkeit
+  möglichst genau entspricht. Vorher richtete es sich nach Flächenanteilen; große helle Hintergründe
+  zogen die Wechsel nach oben und das Bild wurde dunkel und grau. Jetzt: heller, flacher Hintergrund
+  und fein abgestufte Details ohne Nacharbeit.
+- 3D-Ansicht feiner (600 statt 360 Punkte je Seite) und mit besserem Startblick aufs ganze Modell.
+
+### Neu
+- **Farbinseln (Color Pop):** Links unter „Farbinseln“ einen Bereich per Klick ins Original-Bild
+  wählen (z. B. Augen, Blüte). Er wird über das übrige Relief angehoben und oben mit einem eigenen
+  Filament gedruckt; das ähnlichste Filament wird vorgeschlagen. Einstellbar: Farbtoleranz, Höhe,
+  nur zusammenhängende Fläche, Relief behalten, weitere Klickpunkte. Die Inseln stehen mit in
+  Farbwechsel-Liste und 3MF und werden im Projekt gespeichert.
+
 ## 0.6.0 – 2026-11-25
 
 ### Neu

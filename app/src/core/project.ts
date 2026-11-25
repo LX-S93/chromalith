@@ -1,10 +1,11 @@
 /** Projekt (.chroma): Bild (eingebettet als PNG), Einstellungen, Filament-Stapel.
  *  Kompatibel mit den .chroma-Dateien der bisherigen Python-Version. */
-import { colorError, layerPalette, nearestHeights, optimizePlan } from "./colormatch";
+import { colorError, layerPalette, nearestHeights, optimizeLumaPlan, optimizePlan } from "./colormatch";
 import { isChromatic, filamentLuminance, type Filament } from "./filaments";
 import { buildHeightmap, normalizeSettings, prepareImage, type DigitRenderer, type EffectiveMode, type HeightMap, type HeightSettings } from "./heightmap";
 import { autoPlan, ordered, type ColorStop } from "./plan";
 import type { Raster } from "./raster";
+import { applyIslands, normalizeIsland, type Island } from "./islands";
 
 export const PROJECT_FORMAT = "chromalith-project";
 
@@ -15,6 +16,7 @@ export interface Project {
   imagePng: Uint8Array | null;
   settings: HeightSettings;
   stops: ColorStop[];
+  islands?: Island[];
 }
 
 export function effectiveMode(p: Project): EffectiveMode {
@@ -34,7 +36,13 @@ export function buildProject(p: Project, renderDigits?: DigitRenderer, settings:
     const { heights, colors } = layerPalette(p.stops, settings.base_layer_mm, settings.layer_height_mm, settings.min_height_mm, settings.max_height_mm);
     colorFn = (rgb: Float32Array) => nearestHeights(rgb, heights, colors);
   }
-  return buildHeightmap(p.image, settings, { mode, colorFn, renderDigits });
+  const hm = buildHeightmap(p.image, settings, { mode, colorFn, renderDigits });
+  const islands = (p.islands ?? []).filter((i) => i.seeds.length);
+  if (islands.length) {
+    const r = applyIslands(hm, islands, p.image.width, p.image.height, settings);
+    hm.islandStops = r.stops; hm.restLayers = r.restLayers;
+  }
+  return hm;
 }
 
 /** Neue Verteilung der Wechsel-Schichten (Reihenfolge der Filamente bleibt). */
@@ -45,8 +53,9 @@ export function autoDistribute(p: Project, settings: HeightSettings = p.settings
     const { w, h, rgb } = prepareImage(p.image, settings);
     return optimizePlan(rgb, w, h, fils, settings.base_layer_mm, settings.layer_height_mm, settings.min_height_mm, settings.max_height_mm);
   }
-  const tmp: Project = { ...p, stops: fils.map((f) => ({ filament: f, start_layer: 1 })) };
-  return autoPlan(fils, buildProject(tmp, renderDigits, settings));
+  const tmp: Project = { ...p, islands: [], stops: fils.map((f) => ({ filament: f, start_layer: 1 })) };
+  const hm = buildProject(tmp, renderDigits, settings);
+  return optimizeLumaPlan(hm, fils, autoPlan(fils, hm));
 }
 
 export { colorError };
@@ -63,6 +72,7 @@ export function serializeProject(p: Project): string {
   return JSON.stringify({
     format: PROJECT_FORMAT, version: 1, name: p.name, settings: p.settings,
     plan: p.stops.map((s) => ({ start_layer: s.start_layer, filament: s.filament })),
+    islands: p.islands ?? [],
     image_png: p.imagePng ? b64encode(p.imagePng) : null,
   });
 }
@@ -71,6 +81,7 @@ export interface ParsedProject {
   name: string;
   settings: HeightSettings;
   stops: ColorStop[];
+  islands: Island[];
   imagePng: Uint8Array | null;
 }
 
@@ -83,5 +94,6 @@ export function parseProject(text: string): ParsedProject {
       material: String(s.filament.material ?? "PLA"), color: String(s.filament.color), td: Number(s.filament.td),
       owned: Boolean(s.filament.owned) } as Filament,
   }));
-  return { name: d.name ?? "Unbenannt", settings: normalizeSettings(d.settings), stops, imagePng: d.image_png ? b64decode(d.image_png) : null };
+  const islands = (d.islands ?? []).filter((i: any) => i && i.filament).map(normalizeIsland);
+  return { name: d.name ?? "Unbenannt", settings: normalizeSettings(d.settings), stops, islands, imagePng: d.image_png ? b64decode(d.image_png) : null };
 }

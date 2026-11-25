@@ -207,3 +207,29 @@ it("3MF: gültiges ZIP mit Modell und Farbwechseln", async () => {
   expect(files.get("Metadata/Prusa_Slicer_custom_gcode_per_print_z.xml")).toContain('print_z="1.04"');
   expect(files.get("Metadata/custom_gcode_per_layer.xml")).toContain('top_z="1.04"');
 });
+
+import { applyIslands, effectiveStops } from "../src/core";
+it("Farbinsel: Bereich wird angehoben und bekommt eigenes Filament", () => {
+  // 10×10 Grau, in der Mitte ein rotes 4×4-Quadrat
+  const w = 10, px = new Uint8Array(w * w * 4);
+  for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, red = x >= 3 && x < 7 && y >= 3 && y < 7;
+    px.set(red ? [220, 20, 20, 255] : [128, 128, 128, 255], i);
+  }
+  const img = fromRGBA8(w, w, px);
+  const lib = starterLibrary();
+  const fil = (n: string) => lib.find((f) => f.name === n && f.brand === "Generisch")!;
+  const s = normalizeSettings({ width_mm: 9, pixel_size_mm: 1 });
+  const p: Project = { name: "t", image: img, imagePng: null, settings: s,
+    stops: [{ filament: fil("Schwarz"), start_layer: 1 }, { filament: fil("Weiß"), start_layer: 8 }],
+    islands: [{ id: "a", filament: fil("Rot"), seeds: [{ x: 0.5, y: 0.5 }], tolerance: 15, contiguous: true, raise_mm: 0.4, keep_relief: false }] };
+  const hm = buildProject(p, undefined, { ...s, height_mode: "bright_high" });
+  const rest = hm.heights[0], top = hm.heights[5 * hm.width + 5];
+  expect(top).toBeGreaterThan(rest + 0.3);
+  const nTop = hm.heights.filter((v) => v === top).length;
+  expect(nTop).toBeGreaterThanOrEqual(10); expect(nTop).toBeLessThanOrEqual(24);
+  const est = effectiveStops(hm, p.stops);
+  expect(est[est.length - 1].filament.name).toBe("Rot");
+  expect(est[est.length - 1].start_layer).toBe(hm.restLayers! + 1);
+  void applyIslands;
+});

@@ -86,6 +86,9 @@ export interface HeightMap {
   rgb: Float32Array; // Originalfarben je Punkt (3 pro Punkt)
   border_px: number;
   mask: Uint8Array | null; // 1 = Material vorhanden
+  /** Farbinseln: zusätzliche Wechsel und Schichtzahl des Reliefs ohne Inseln */
+  islandStops?: import("./plan").ColorStop[];
+  restLayers?: number;
 }
 
 export const sizeMm = (hm: HeightMap): [number, number] => [(hm.width - 1) * hm.pixel_size_mm, (hm.height - 1) * hm.pixel_size_mm];

@@ -16,7 +16,7 @@ function call<T>(msg: any, transfer: Transferable[] = [], progress?: (f: number)
   const id = nextId++;
   return new Promise<T>((resolve, reject) => {
     pending.set(id, { resolve, reject, progress });
-    worker.postMessage({ ...msg, id }, transfer);
+    worker.postMessage(withIslands({ ...msg, id }), transfer);
   });
 }
 
@@ -26,8 +26,14 @@ export interface PreviewResult {
   mode: "bright_high" | "dark_high" | "color";
   usage: { filament: ColorStop["filament"]; share: number; first: number; last: number }[];
   triangles: number;
+  stackLayers: number;
   mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; size: [number, number] };
 }
+
+let islandState: unknown[] = [];
+/** Farbinseln für alle folgenden Berechnungen setzen. */
+export const setIslands = (islands: unknown[]) => { islandState = islands; };
+const withIslands = (m: any) => ({ ...m, islands: islandState });
 
 export const setImage = (image: Raster | null) =>
   call<{ palette: { color: string; share: number }[] }>({ type: "image", image });
