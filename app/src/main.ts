@@ -4,7 +4,7 @@ import pkg from "../package.json";
 import {
   HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
   parseProject, serializeLibrary, serializeProject, starterLibrary, toRGBA8, validate, type ColorStop, type Filament,
-  materialDensity, filamentAtLayer, layerTopZ, simulate, type HeightSettings, type Island, type Raster,
+  LITHO_FORMS, materialDensity, filamentAtLayer, layerTopZ, simulate, type HeightSettings, type Island, type Raster,
 } from "./core";
 import * as compute from "./compute";
 import type { PreviewResult } from "./compute";
@@ -102,7 +102,7 @@ const sl = (k: keyof HeightSettings, label: string, lo: number, hi: number, step
 const undoBtn = button(null, () => undo(), { icon: "undo", cls: "ghost", title: "Rückgängig (Strg+Z)" });
 const redoBtn = button(null, () => redo(), { icon: "redo", cls: "ghost", title: "Wiederholen (Strg+Y / Strg+Umschalt+Z)" });
 const modeButtons = new Map<string, HTMLButtonElement>();
-const modePill = h("div", { class: "mode-pill", title: "Woraus die Höhe entsteht" });
+const modePill = h("div", { class: "mode-pill top", title: "Woraus die Höhe entsteht" });
 for (const [k, label] of [["auto", "Auto"], ["bright_high", "Hell hoch"], ["dark_high", "Dunkel hoch"], ["color", "Farbtreu"]] as const) {
   const b = h("button", { onclick: () => { fields.height_mode!.set(k); setSetting("height_mode", k); } }, label);
   modeButtons.set(k, b); modePill.append(b);
@@ -181,6 +181,54 @@ const islandPanel = new IslandPanel({
   changed: () => { markDirty(); schedule(); },
 });
 left.append(section("Farbinseln", false, islandPanel.el));
+for (const d of left.querySelectorAll("details.section")) if (["Form", "Schichten", "Farbinseln"].includes(d.querySelector("summary")!.textContent!)) (d as HTMLElement).dataset.mode = "relief";
+
+// ------------------------------------------------------------------ Lithophanie
+const LIGHTS: Record<string, string> = { "#ffd9a0": "Warmweiß (LED 2700 K)", "#fff1dc": "Neutralweiß", "#e4eeff": "Kaltweiß", "#ffb066": "Kerze / Teelicht" };
+const lithoView = {
+  filament: store.get<{ name: string; color: string; td: number }>("lithoFilament", { name: "Generisch Weiß", color: "#f2f1ec", td: 4.5 }),
+  light: store.get("lithoLight", "#ffd9a0"), intensity: store.get("lithoIntensity", 1.6), on: true,
+};
+const lithoLight = () => ({ filamentColor: lithoView.filament.color, td: lithoView.filament.td, light: lithoView.light, intensity: lithoView.intensity });
+const kindPill = h("div", { class: "mode-pill", style: { display: "flex", marginBottom: "10px" }, title: "Farbrelief: farbiges Bild aus Filament-Schichten. Lithophanie: einfarbiges Bild, das im Gegenlicht erscheint." });
+const kindBtns = ([[false, "Farbrelief"], [true, "Lithophanie"]] as const).map(([v, label]) => {
+  const b = h("button", { style: { flex: "1" }, onclick: () => { setSetting("litho", v); syncLitho(); } }, label);
+  kindPill.append(b); return [v, b] as const;
+});
+const lithoFilBtn = button("", async () => {
+  const f = (await openLibrary(libHost, true))[0];
+  if (!f) return;
+  lithoView.filament = { name: filamentLabel(f), color: f.color, td: f.td }; store.set("lithoFilament", lithoView.filament);
+  syncLitho(); schedule(0);
+}, { cls: "wide", title: "Filament der Lithophanie wählen. Weiß oder Natur mit TD 3 bis 6 funktioniert am besten." });
+const lithoLightSel = selectField("Lichtfarbe", LIGHTS, (v) => { lithoView.light = v; store.set("lithoLight", v); schedule(0); }, "Farbe der Lampe hinter bzw. in der Lithophanie.");
+const lithoIntensity = sliderField("Lichtstärke", 0.4, 4, 0.1, "×", (v) => { lithoView.intensity = v; store.set("lithoIntensity", v); schedule(0); },
+  "Wie hell die Lampe ist. Bei zu wenig Licht bleiben dicke Stellen schwarz, bei zu viel überstrahlen dünne.", 1);
+lithoLightSel.set(lithoView.light); lithoIntensity.set(lithoView.intensity);
+const lithoSection = section("Lithophanie", true,
+  (fields.litho_form = selectField("Form", LITHO_FORMS, (v) => { setSetting("litho_form", v as any); syncLitho(); }, "Flach für Fensterbilder und Leuchtrahmen, gebogen steht von selbst, Zylinder als Lampenschirm, Kugel als Ornament.")).el,
+  sl("litho_min_mm", "Dünnste Stelle (hell)", 0.3, 2, 0.05, "mm", "Wandstärke an den hellsten Bildstellen. 0,6 mm bis 0,8 mm ist stabil und lässt viel Licht durch."),
+  sl("litho_max_mm", "Dickste Stelle (dunkel)", 1.2, 6, 0.1, "mm", "Wandstärke an den dunkelsten Bildstellen. Richtwert: etwa 60 bis 80 % des TD-Werts deines Filaments.", 1),
+  sl("litho_angle_deg", "Bogen", 30, 300, 5, "°", "Wie weit die gebogene Lithophanie herumläuft. 120° steht stabil.", 0),
+  sl("litho_band_deg", "Bildhöhe auf der Kugel", 25, 75, 1, "°", "So weit reicht das Bild vom Äquator nach oben und unten. Darüber und darunter bleibt die Kugel dunkel.", 0),
+  sl("litho_hole_mm", "Öffnung unten Ø", 0, 60, 1, "mm", "Öffnung für LED-Teelicht oder Lichterkette. Die Kugel wird mit der Öffnung nach unten gedruckt. 0 = geschlossen.", 0),
+  (fields.litho_loop = switchField("Öse zum Aufhängen", (v) => setSetting("litho_loop", v), "Setzt oben einen Ring für Faden oder Haken auf die Kugel.")).el,
+  (fields.litho_invert = switchField("Umkehren (Negativ)", (v) => setSetting("litho_invert", v), "Helle Stellen dick statt dünn. Nur für Sonderfälle.")).el,
+  h("div", { class: "field" }, h("label", null, "Filament"), lithoFilBtn),
+  lithoLightSel.el, lithoIntensity.el,
+  h("p", { class: "hint", style: { margin: "4px 0 0" } }, "Die Simulation zeigt, wie das Bild mit Licht von hinten bzw. innen aussieht. Drucktipp: 100 % Füllung, 0,12 mm Schichthöhe, langsam."));
+lithoSection.dataset.mode = "litho";
+left.prepend(kindPill, lithoSection);
+function syncLitho() {
+  const on = !!state.settings.litho, form = state.settings.litho_form;
+  app.classList.toggle("litho", on);
+  for (const [v, b] of kindBtns) b.classList.toggle("active", v === on);
+  lithoFilBtn.replaceChildren(h("div", { class: "swatch", style: { background: lithoView.filament.color } }), `${lithoView.filament.name} · TD ${lithoView.filament.td.toFixed(1)}`);
+  const show = (k: keyof HeightSettings, vis: boolean) => { const el = fields[k]?.el; if (el) el.style.display = vis ? "" : "none"; };
+  show("litho_angle_deg", form === "curved"); show("litho_band_deg", form === "sphere"); show("litho_hole_mm", form === "sphere"); show("litho_loop", form === "sphere");
+  const wl = fields.width_mm?.el.querySelector("label");
+  if (wl) wl.textContent = !on ? "Breite" : form === "cylinder" || form === "sphere" ? "Durchmesser" : form === "curved" ? "Breite (Bogenlänge)" : "Breite";
+}
 
 // Mitte: Ansichten
 const viewPreview = new ImageView();
@@ -242,6 +290,16 @@ function updateCompare3d() {
   view3d.setCompare(compare3d);
 }
 updateCompare3d();
+// Lithophanie: Licht an/aus
+const lightBtn = button("", () => { lithoView.on = !lithoView.on; syncLight(); }, { cls: "small on", title: "Lampe ein- und ausschalten: mit Licht erscheint das Bild, ohne sieht man nur das weiße Relief." });
+function syncLight() {
+  lightBtn.classList.toggle("on", lithoView.on);
+  lightBtn.replaceChildren(icon("magic"), lithoView.on ? "Licht an" : "Licht aus");
+  view3d.setLit(lithoView.on);
+}
+syncLight();
+view3d.el.append(h("div", { class: "view-tools litho-only", style: { top: "44px" } }, lightBtn));
+
 function updateCompare() {
   compareBtn.classList.toggle("on", compareOn);
   compareBtn.textContent = ""; compareBtn.append(icon("swap"), compareOn ? "Vergleich: links Original, rechts Ergebnis" : "Vergleich");
@@ -359,7 +417,7 @@ spoolmanAutoSync(libHost).then((r) => {
 // ------------------------------------------------------------------ Synchronisation
 function syncFields() {
   for (const [k, f] of Object.entries(fields)) f!.set((state.settings as any)[k]);
-  syncMode(); syncShapeFields();
+  syncMode(); syncShapeFields(); syncLitho();
 }
 function syncMode(effective?: string) {
   for (const [k, b] of modeButtons) b.classList.toggle("active", k === state.settings.height_mode);
@@ -436,6 +494,7 @@ async function rebuild() {
   running = true; busy.classList.add("on");
   compute.setIslands(state.islands);
   try {
+    if (state.settings.litho) { await rebuildLitho(); return; }
     const r = await compute.preview(state.settings, activeStops());
     state.result = r;
     state.previewRgba = new Uint8ClampedArray(r.preview);
@@ -460,6 +519,40 @@ async function rebuild() {
     running = false; busy.classList.remove("on");
     if (queued) { queued = false; rebuild(); }
   }
+}
+
+/** Lithophanie berechnen und anzeigen (2D im Gegenlicht, 3D als Körper mit Licht an/aus). */
+async function rebuildLitho() {
+  const r = await compute.litho(state.settings, lithoLight());
+  state.result = null;
+  state.previewRgba = new Uint8ClampedArray(r.preview);
+  viewPreview.set(state.previewRgba, r.width, r.height);
+  viewPreview.setCompare(null);
+  view3d.setCompare(false);
+  view3d.setFree(r.mesh, lithoView.filament.color, lithoView.on);
+  const g = (r.volume_mm3 / 1000) * 1.24;
+  setStatus([`<b>Lithophanie</b>`, `${r.size[0].toFixed(0)} × ${r.size[1].toFixed(0)} × ${r.size[2].toFixed(0)} mm`,
+    `Wand ${state.settings.litho_min_mm.toFixed(2)}–${state.settings.litho_max_mm.toFixed(1)} mm`, `≈ ${g.toFixed(0)} g`, `≈ ${(r.triangles / 1e6).toFixed(2)} Mio. Dreiecke`, r.note]);
+}
+
+async function exportLitho() {
+  busy.classList.add("on");
+  try {
+    const r = await compute.lithoExport(state.settings, lithoLight(), state.name);
+    const stl = new Uint8Array(r.stl);
+    const path = await saveFile(`${state.name}_lithophanie.stl`, stl, [{ name: "STL", extensions: ["stl"] }]);
+    if (!path) return;
+    const files = [path];
+    if (state.previewRgba) { const v = viewPreview.size; files.push(await saveSibling(path, "_gegenlicht.png", await rgbaToPng(state.previewRgba, v[0], v[1]))); }
+    const close = modal("Export fertig", h("div", { style: { lineHeight: "1.6" } },
+      h("p", { style: { marginTop: 0 } }, "Geschrieben:"),
+      h("ul", { style: { paddingLeft: "18px" } }, ...files.map((f) => h("li", null, f.split(/[\\/]/).pop()!))),
+      h("p", { class: "hint" }, `STL ${(stl.length / 1e6).toFixed(1)} MB, ${(r.triangles / 1e6).toFixed(2)} Mio. Dreiecke, ${r.size.map((x) => x.toFixed(0)).join(" × ")} mm, etwa ${((r.volume_mm3 / 1000) * 1.24).toFixed(0)} g.`),
+      h("p", { class: "hint" }, r.note),
+      h("p", { class: "hint" }, "Druck: einfarbig, 100 % Füllung (oder so viele Wände, dass alles massiv ist), Schichthöhe 0,12 mm oder feiner, langsam. Flache und gebogene Lithophanien stehend drucken. Die Kugel steht auf ihrer Öffnung und braucht dort etwas Rand (Brim).")),
+      [button("OK", () => close(), { cls: "primary" })], true);
+  } catch (e: any) { toast("Export fehlgeschlagen: " + e.message, "err"); }
+  finally { if (!running) busy.classList.remove("on"); }
 }
 
 async function autoDistribute() {
@@ -684,6 +777,7 @@ async function newProject() {
 async function exportAll() {
   if (!state.image) { toast("Bitte zuerst ein Bild öffnen."); return; }
   try { validate(state.settings); } catch (e: any) { toast(e.message, "err"); return; }
+  if (state.settings.litho) return exportLitho();
   busy.classList.add("on");
   try {
     compute.setIslands(state.islands);

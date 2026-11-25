@@ -50,6 +50,16 @@ export interface HeightSettings {
   image_scale: number;
   image_x: number;
   image_y: number;
+  /** Lithophanie statt Farbrelief */
+  litho: boolean;
+  litho_form: "flat" | "curved" | "cylinder" | "sphere";
+  litho_min_mm: number;
+  litho_max_mm: number;
+  litho_angle_deg: number;
+  litho_band_deg: number;
+  litho_hole_mm: number;
+  litho_loop: boolean;
+  litho_invert: boolean;
 }
 
 export const DEFAULT_SETTINGS: HeightSettings = {
@@ -58,6 +68,8 @@ export const DEFAULT_SETTINGS: HeightSettings = {
   height_mode: "auto", brightness: 0, contrast: 1, gamma: 1, smoothing_px: 0, detail_mm: 0,
   border_mm: 0, border_height_mm: 0, shape: "rect", hole_mm: 0, rim_mm: 0, raise_mm: 0.6,
   clock_numbers: false, numbers_mm: 12, image_scale: 1, image_x: 0, image_y: 0,
+  litho: false, litho_form: "flat", litho_min_mm: 0.6, litho_max_mm: 3, litho_angle_deg: 120, litho_band_deg: 55,
+  litho_hole_mm: 30, litho_loop: true, litho_invert: false,
 };
 
 export function normalizeSettings(d: Partial<HeightSettings> | undefined): HeightSettings {

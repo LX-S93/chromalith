@@ -197,3 +197,9 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 
 .stop.off .title b { text-decoration: line-through; color: var(--muted); }
 .zbar { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 28px); }
 .zbar .sep { width: 1px; height: 18px; background: var(--line-2); margin: 0 4px; }
+
+/* Lithophanie-Modus */
+#app.litho { grid-template-columns: 320px 1fr 0; }
+#app.litho .right, #app.litho [data-mode="relief"], #app.litho .zbar, #app.litho .view-tools:not(.litho-only), #app.litho .mode-pill.top { display: none; }
+#app:not(.litho) [data-mode="litho"], #app:not(.litho) .litho-only { display: none; }
+#app.litho .view-tools.litho-only { display: flex; }

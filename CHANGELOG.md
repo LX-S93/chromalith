@@ -2,6 +2,21 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.14.0 – 2026-11-25
+
+- **Neuer Modus „Lithophanie“** (Umschalter oben links: Farbrelief / Lithophanie). Aus dem Bild wird eine
+  einfarbige Wand, die an dunklen Stellen dick und an hellen dünn ist. Das Bild erscheint, sobald Licht von
+  hinten oder innen kommt.
+- **Vier Formen**: flach (Fensterbild, Leuchtrahmen), gebogen (steht von selbst), Zylinder (Lampenschirm) und
+  Kugel (Ornament, mit Öse zum Aufhängen und Öffnung unten für LED-Teelicht oder Lichterkette).
+- **Simulation mit Licht**: Die Vorschau zeigt das Bild im Gegenlicht, die 3D-Ansicht den Körper zum Drehen.
+  Mit „Licht an / Licht aus“ siehst du den Unterschied. Lichtfarbe (Warmweiß, Neutral, Kaltweiß, Kerze) und
+  Lichtstärke sind einstellbar, das Filament (Farbe und TD) kommt aus der Bibliothek.
+- Einstellbar: dünnste und dickste Wandstärke, Bogen, Bildhöhe auf der Kugel, Öffnung, Negativ. Helligkeit,
+  Kontrast, Gamma und Glätten aus dem Abschnitt „Bild“ wirken auch hier.
+- **Export** als STL (einfarbig, geschlossen) plus Bild der Gegenlicht-Vorschau. Die Einstellungen werden im
+  Projekt gespeichert.
+
 ## 0.13.2 – 2026-11-25
 
 - **Filament-Vorschläge treffen jetzt auch kleine, kräftige Farben**: Bei einem kleinen Motiv auf großem

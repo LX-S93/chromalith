@@ -1,5 +1,5 @@
 /** Schnittstelle zum Rechen-Worker (Promise-basiert). */
-import type { ColorStop, HeightSettings, Raster } from "./core";
+import type { ColorStop, HeightSettings, LithoLight, Raster } from "./core";
 
 const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
 let nextId = 1;
@@ -47,3 +47,11 @@ export const previewImage = (settings: HeightSettings, stops: ColorStop[], maxSi
   call<{ width: number; height: number; preview: ArrayBuffer }>({ type: "preview", settings, stops, maxSide, lite: true });
 export const suggest = (settings: HeightSettings, stops: ColorStop[], library: ColorStop["filament"][], count: number, progress?: (f: number) => void) =>
   call<{ stops: ColorStop[]; error: number; currentError: number | null }>({ type: "suggest", settings, stops, library, count }, [], progress);
+
+export interface LithoResult {
+  width: number; height: number; preview: ArrayBuffer; size: [number, number, number]; note: string; volume_mm3: number; triangles: number;
+  mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer };
+}
+export const litho = (settings: HeightSettings, light: LithoLight) => call<LithoResult>({ type: "litho", settings, light });
+export const lithoExport = (settings: HeightSettings, light: LithoLight, name: string) =>
+  call<{ stl: ArrayBuffer; triangles: number; size: [number, number, number]; volume_mm3: number; note: string }>({ type: "litho", settings, light, name, export: true });

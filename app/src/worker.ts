@@ -3,6 +3,7 @@
  *  ohne die Oberfläche zu blockieren. */
 import {
   autoDistribute, buildProject, write3mf, effectiveStops, type Island, colorError, labSample, prepareImage, suggestFilaments, type Filament, downsample, effectiveMode, filamentUsage, heightmapToMesh, imagePalette, layerCount,
+  lithoMesh, lithoThickness, lithoSimulate, lithoTransmit, meshVolume, type LithoLight,
   maxZ, minLayer, planJson, planReport, simulate, sizeMm, writeStl, type ColorStop, type DigitRenderer,
   type HeightSettings, type Project, type Raster,
 } from "./core";
@@ -81,6 +82,28 @@ self.onmessage = (ev: MessageEvent) => {
         mesh: { vertices: mesh.vertices.buffer, faces: mesh.faces.buffer, colors: colors.buffer, orig: orig.buffer, top: mesh.topIndex.buffer, size: sizeMm(small) },
       };
       transfer = [preview.buffer, mesh.vertices.buffer, mesh.faces.buffer, colors.buffer, orig.buffer, mesh.topIndex.buffer];
+    } else if (type === "litho") {
+      if (!image) throw new Error("Kein Bild geladen.");
+      const full = ev.data.settings as HeightSettings, light = ev.data.light as LithoLight;
+      if (ev.data.export) {
+        const m = lithoMesh(lithoThickness(image, full), full);
+        const stl = writeStl(m, `Chromalith Lithophanie ${ev.data.name ?? ""}`);
+        result = { stl: stl.buffer, triangles: m.faces.length / 3, size: m.size, volume_mm3: meshVolume(m), note: m.note };
+        transfer = [stl.buffer];
+      } else {
+        const s = previewSettings(full, 700);
+        const th = lithoThickness(image, s);
+        const preview = toRGBA(lithoSimulate(th, light), th.w * th.h);
+        const m = lithoMesh(th, s, 420);
+        const colors = new Float32Array(m.thick.length * 3);
+        const inner = lithoTransmit(0.15, light.filamentColor, light.td, light.light, light.intensity);
+        for (let v = 0; v < m.thick.length; v++) colors.set(m.thick[v] < 0 ? inner : lithoTransmit(m.thick[v], light.filamentColor, light.td, light.light, light.intensity), v * 3);
+        const fullW = Math.round(full.width_mm / full.pixel_size_mm) + 1;
+        result = { width: th.w, height: th.h, preview: preview.buffer, size: m.size, note: m.note, volume_mm3: meshVolume(m),
+          triangles: Math.round((m.faces.length / 3) * Math.max(1, (fullW / th.w)) ** 2),
+          mesh: { vertices: m.vertices.buffer, faces: m.faces.buffer, colors: colors.buffer } };
+        transfer = [preview.buffer, m.vertices.buffer, m.faces.buffer, colors.buffer];
+      }
     } else if (type === "suggest") {
       if (!image) throw new Error("Kein Bild geladen.");
       const s = previewSettings(ev.data.settings, 220);

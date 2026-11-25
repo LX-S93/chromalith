@@ -340,3 +340,30 @@ describe("Filament-Vorschlag", () => {
     for (const n of ["Rot", "Blau", "Grün"]) expect(names).toContain(n);
   });
 });
+
+import { lithoMesh, lithoThickness, lithoTransmit, lithoSimulate } from "../src/core";
+describe("Lithophanie", () => {
+  const img = gradient(48, 32);
+  const base = { ...normalizeSettings(undefined), litho: true, width_mm: 60, pixel_size_mm: 1 };
+  it("dunkel = dick, hell = dünn", () => {
+    const th = lithoThickness(img, base);
+    expect(th.t[0]).toBeCloseTo(3, 1);
+    expect(th.t[th.w - 1]).toBeCloseTo(0.6, 1);
+    const sim = lithoSimulate(th, { filamentColor: "#ffffff", td: 4, light: "#ffffff", intensity: 1 });
+    expect(sim[(th.w - 1) * 3]).toBeGreaterThan(sim[0] + 0.3);
+    expect(lithoTransmit(0.6, "#ffffff", 4, "#ffffff", 1)[0]).toBeGreaterThan(lithoTransmit(3, "#ffffff", 4, "#ffffff", 1)[0]);
+  });
+  for (const form of ["flat", "curved", "cylinder", "sphere"] as const)
+    it(`Körper „${form}“ ist geschlossen und richtig herum`, () => {
+      const s = { ...base, litho_form: form };
+      const m = lithoMesh(lithoThickness(img, s), s);
+      const edges = new Map<string, number>();
+      for (let i = 0; i < m.faces.length; i += 3) for (let k = 0; k < 3; k++) {
+        const a = m.faces[i + k], b = m.faces[i + ((k + 1) % 3)];
+        edges.set(`${a}_${b}`, (edges.get(`${a}_${b}`) ?? 0) + 1);
+      }
+      for (const [k, c] of edges) { const [a, b] = k.split("_"); expect(c).toBe(1); expect(edges.get(`${b}_${a}`)).toBe(1); }
+      expect(meshVolume(m)).toBeGreaterThan(100);
+      expect(m.size[2]).toBeGreaterThan(20);
+    });
+});

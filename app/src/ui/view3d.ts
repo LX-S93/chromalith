@@ -77,7 +77,8 @@ export class ModelView {
     geo.computeVertexNormals();
     if (this.mesh) { this.scene.remove(this.mesh); this.mesh.geometry.dispose(); }
     else this.mesh = null;
-    const mat = (this.mesh?.material as THREE.Material) ?? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0 });
+    this.free = null; this.freeKey = "";
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0 });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.scale.z = this.zScale;
     this.scene.add(this.mesh);
@@ -129,13 +130,53 @@ export class ModelView {
     this.render();
   }
 
+  /** Freier Körper (Lithophanie): beleuchtet = durchscheinende Farben, sonst Filamentfarbe mit Schattierung. */
+  private free: { lit: Float32Array; plain: THREE.Color } | null = null;
+  setFree(m: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer }, plainColor: string, lit: boolean) {
+    if (!this.ensure()) return;
+    this.clear();
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(m.vertices), 3));
+    const col = new Float32Array(m.colors);
+    for (let i = 0; i < col.length; i++) col[i] = srgbToLinear(col[i]);
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(new Uint32Array(m.faces), 1));
+    geo.computeVertexNormals();
+    geo.computeBoundingBox();
+    this.free = { lit: col, plain: new THREE.Color(plainColor) };
+    this.baseZ = null; this.top = null; this.baseCol = null;
+    this.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial());
+    this.scene.add(this.mesh);
+    this.setLit(lit);
+    const bb = geo.boundingBox!, c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
+    const key = `${sz.x.toFixed(0)}|${sz.y.toFixed(0)}|${sz.z.toFixed(0)}`;
+    if (key !== this.freeKey && this.controls) {
+      this.freeKey = key;
+      const d = Math.max(sz.x, sz.z, sz.y) * 1.9;
+      this.camera.position.set(c.x - d * 0.35, c.y - d, c.z + d * 0.25);
+      this.controls.target.copy(c); this.controls.update();
+      this.size = [0, 0]; this.framed = false;
+    }
+    this.render();
+  }
+  private freeKey = "";
+  setLit(lit: boolean) {
+    if (!this.mesh || !this.free) return;
+    (this.mesh.material as THREE.Material).dispose();
+    this.mesh.material = lit
+      ? new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({ color: this.free.plain, roughness: 0.6, metalness: 0, side: THREE.DoubleSide });
+    this.render();
+  }
+
   clear() {
+    this.free = null;
     if (this.mesh) { this.scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh = null; }
     if (this.meshOrig) { this.scene.remove(this.meshOrig); this.meshOrig.geometry.dispose(); this.meshOrig = null; }
     this.render();
   }
 
-  setZScale(z: number) { this.zScale = z; if (this.mesh) this.mesh.scale.z = z; if (this.meshOrig) this.meshOrig.scale.z = z; this.render(); }
+  setZScale(z: number) { this.zScale = z; if (this.mesh && !this.free) this.mesh.scale.z = z; if (this.meshOrig) this.meshOrig.scale.z = z; this.render(); }
 
   /** Vergleich: links vom Teiler das flache Originalbild, rechts der Druck als Relief. */
   setCompare(on: boolean) {
