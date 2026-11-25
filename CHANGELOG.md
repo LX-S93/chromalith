@@ -2,6 +2,16 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.6.0 – 2026-11-25
+
+### Neu
+- **3MF-Export mit eingebauten Farbwechseln:** Beim Exportieren entsteht zusätzlich eine `.3mf`.
+  Darin stehen die Farbwechsel (M600 mit Filamentfarbe) für PrusaSlicer sowie Bambu Studio /
+  OrcaSlicer, die Schichthöhe ist am Objekt hinterlegt. Im Slicer nur noch die erste Schicht
+  (Standard 0,16 mm) einstellen, die Wechsel stehen dann schon an der richtigen Stelle.
+  Bitte im eigenen Slicer prüfen und Rückmeldung geben, falls ein Wechsel fehlt.
+- STL, Farbwechsel-Liste und Vorschaubild werden wie bisher mit exportiert.
+
 ## 0.5.0 – 2026-11-25
 
 ### Neu

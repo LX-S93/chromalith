@@ -2,7 +2,7 @@
 /** Rechen-Worker: hält das Bild und rechnet Höhenkarte, Vorschau, Analyse und Export,
  *  ohne die Oberfläche zu blockieren. */
 import {
-  autoDistribute, buildProject, colorError, labSample, prepareImage, suggestFilaments, type Filament, downsample, effectiveMode, filamentUsage, heightmapToMesh, imagePalette, layerCount,
+  autoDistribute, buildProject, write3mf, colorError, labSample, prepareImage, suggestFilaments, type Filament, downsample, effectiveMode, filamentUsage, heightmapToMesh, imagePalette, layerCount,
   maxZ, minLayer, planJson, planReport, simulate, sizeMm, writeStl, type ColorStop, type DigitRenderer,
   type HeightSettings, type Project, type Raster,
 } from "./core";
@@ -93,12 +93,16 @@ self.onmessage = (ev: MessageEvent) => {
     } else if (type === "export") {
       const p = project(ev.data.settings, ev.data.stops, ev.data.name);
       const hm = buildProject(p, renderDigits);
-      const stl = writeStl(heightmapToMesh(hm), `Chromalith ${ev.data.name}`);
+      const mesh = heightmapToMesh(hm);
+      const stl = writeStl(mesh, `Chromalith ${ev.data.name}`);
       const sim = simulate(hm, p.stops);
       const preview = toRGBA(sim, hm.width * hm.height);
-      result = { stl: stl.buffer, report: planReport(hm, p.stops, ev.data.name), json: JSON.stringify(planJson(hm, p.stops), null, 2),
-        preview: preview.buffer, width: hm.width, height: hm.height };
-      transfer = [stl.buffer as ArrayBuffer, preview.buffer];
+      write3mf(mesh, hm, p.stops, ev.data.name).then((tmf) => {
+        const result = { stl: stl.buffer, threemf: tmf.buffer, report: planReport(hm, p.stops, ev.data.name),
+          json: JSON.stringify(planJson(hm, p.stops), null, 2), preview: preview.buffer, width: hm.width, height: hm.height };
+        (self as any).postMessage({ id, ok: true, result }, [stl.buffer, tmf.buffer, preview.buffer]);
+      }, (e) => (self as any).postMessage({ id, ok: false, error: String(e?.message ?? e) }));
+      return;
     }
     (self as any).postMessage({ id, ok: true, result }, transfer);
   } catch (e: any) {

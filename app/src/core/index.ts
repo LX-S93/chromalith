@@ -8,3 +8,5 @@ export * from "./analysis";
 export * from "./mesh";
 export * from "./project";
 export * from "./suggest";
+export * from "./threemf";
+export * from "./zip";

@@ -444,13 +444,16 @@ async function exportAll() {
     if (!path) return;
     const png = await rgbaToPng(new Uint8ClampedArray(r.preview), r.width, r.height);
     const files = [path,
+      await saveSibling(path, ".3mf", new Uint8Array(r.threemf)),
       await saveSibling(path, "_farbwechsel.txt", r.report),
       await saveSibling(path, "_farbwechsel.json", r.json),
       await saveSibling(path, "_vorschau.png", png)];
     const close = modal("Export fertig", h("div", null,
       h("p", { style: { marginTop: 0 } }, "Geschrieben:"),
       h("ul", { style: { paddingLeft: "18px", lineHeight: "1.7" } }, ...files.map((f) => h("li", null, f.split(/[\\/]/).pop()!))),
-      h("p", { class: "hint" }, `STL ${(stl.length / 1e6).toFixed(1)} MB. Die Farbwechsel stehen in der _farbwechsel.txt.`),
+      h("p", { class: "hint" }, `STL ${(stl.length / 1e6).toFixed(1)} MB, 3MF ${(r.threemf.byteLength / 1e6).toFixed(1)} MB.`),
+      h("p", { class: "hint" }, "Die 3MF enthält die Farbwechsel schon (PrusaSlicer, Bambu Studio, OrcaSlicer: einfach öffnen). Im Slicer nur noch die erste Schicht auf " +
+        `${state.settings.base_layer_mm.toFixed(2)} mm und die Schichthöhe auf ${state.settings.layer_height_mm.toFixed(2)} mm stellen. Für andere Slicer stehen die Wechsel in der _farbwechsel.txt.`),
       h("pre", { style: { background: "var(--bg)", padding: "10px", borderRadius: "8px", maxHeight: "260px", overflow: "auto", fontSize: "12px" } }, r.report)),
       [button("OK", () => close(), { cls: "primary" })]);
   } catch (e: any) { toast("Export fehlgeschlagen: " + e.message, "err"); }

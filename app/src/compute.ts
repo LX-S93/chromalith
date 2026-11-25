@@ -34,7 +34,7 @@ export const setImage = (image: Raster | null) =>
 export const preview = (settings: HeightSettings, stops: ColorStop[]) => call<PreviewResult>({ type: "preview", settings, stops });
 export const autoDistribute = (settings: HeightSettings, stops: ColorStop[]) => call<{ stops: ColorStop[] }>({ type: "auto", settings, stops });
 export const exportAll = (settings: HeightSettings, stops: ColorStop[], name: string) =>
-  call<{ stl: ArrayBuffer; report: string; json: string; preview: ArrayBuffer; width: number; height: number }>({ type: "export", settings, stops, name });
+  call<{ stl: ArrayBuffer; threemf: ArrayBuffer; report: string; json: string; preview: ArrayBuffer; width: number; height: number }>({ type: "export", settings, stops, name });
 export const previewImage = (settings: HeightSettings, stops: ColorStop[], maxSide = 520) =>
   call<{ width: number; height: number; preview: ArrayBuffer }>({ type: "preview", settings, stops, maxSide, lite: true });
 export const suggest = (settings: HeightSettings, stops: ColorStop[], library: ColorStop["filament"][], count: number, progress?: (f: number) => void) =>

@@ -159,3 +159,51 @@ it("Filament-Vorschlag trifft ein rot-blaues Bild mit roten und blauen Filamente
   expect(names).toMatch(/Blau/);
   expect(r.error).toBeLessThan(30);
 });
+
+import { write3mf, colorChanges, crc32, normalizeSettings, fromRGBA8 } from "../src/core";
+
+async function unzip(z: Uint8Array): Promise<Map<string, string>> {
+  const dv = new DataView(z.buffer, z.byteOffset, z.byteLength);
+  let e = z.length - 22;
+  while (dv.getUint32(e, true) !== 0x06054b50) e--;
+  const n = dv.getUint16(e + 10, true);
+  let o = dv.getUint32(e + 16, true);
+  const out = new Map<string, string>();
+  for (let k = 0; k < n; k++) {
+    expect(dv.getUint32(o, true)).toBe(0x02014b50);
+    const method = dv.getUint16(o + 10, true), crc = dv.getUint32(o + 16, true), csize = dv.getUint32(o + 20, true);
+    const nl = dv.getUint16(o + 28, true), lo = dv.getUint32(o + 42, true);
+    const name = new TextDecoder().decode(z.subarray(o + 46, o + 46 + nl));
+    const lnl = dv.getUint16(lo + 26, true), lel = dv.getUint16(lo + 28, true);
+    const body = z.subarray(lo + 30 + lnl + lel, lo + 30 + lnl + lel + csize);
+    const raw = method === 8
+      ? new Uint8Array(await new Response(new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer())
+      : body;
+    expect(crc32(raw)).toBe(crc);
+    out.set(name, new TextDecoder().decode(raw));
+    o += 46 + nl + dv.getUint16(o + 30, true) + dv.getUint16(o + 32, true);
+  }
+  return out;
+}
+
+it("3MF: gültiges ZIP mit Modell und Farbwechseln", async () => {
+  expect(crc32(new TextEncoder().encode("123456789"))).toBe(0xcbf43926);
+  const s = normalizeSettings({ width_mm: 20, pixel_size_mm: 1 });
+  const img = fromRGBA8(4, 2, new Uint8Array([0,0,0,255, 80,80,80,255, 160,160,160,255, 255,255,255,255, 0,0,0,255, 80,80,80,255, 160,160,160,255, 255,255,255,255]));
+  const lib = starterLibrary();
+  const fil = (n: string) => lib.find((f) => f.name === n && f.brand === "Generisch")!;
+  const stops = [{ filament: fil("Schwarz"), start_layer: 1 }, { filament: fil("Weiß"), start_layer: 12 }];
+  const hm = buildHeightmap(img, s, { mode: "bright_high" });
+  const mesh = heightmapToMesh(hm);
+  const ch = colorChanges(hm, stops);
+  expect(ch).toHaveLength(1);
+  expect(ch[0].z).toBeCloseTo(0.16 + 11 * 0.08, 5);
+  const files = await unzip(await write3mf(mesh, hm, stops, "Test & <1>"));
+  expect([...files.keys()]).toContain("3D/3dmodel.model");
+  const model = files.get("3D/3dmodel.model")!;
+  expect((model.match(/<vertex /g) ?? []).length).toBe(mesh.vertices.length / 3);
+  expect((model.match(/<triangle /g) ?? []).length).toBe(mesh.faces.length / 3);
+  expect(model).toContain("Test &amp; &lt;1&gt;");
+  expect(files.get("Metadata/Prusa_Slicer_custom_gcode_per_print_z.xml")).toContain('print_z="1.04"');
+  expect(files.get("Metadata/custom_gcode_per_layer.xml")).toContain('top_z="1.04"');
+});
