@@ -2,6 +2,24 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.10.0 – 2026-11-25
+
+### Neu
+- **Schritt-für-Schritt-Leiste** über den Ansichten: Bild → Größe & Form → Filamente → Vorschau →
+  Export. Jeder Schritt zeigt einen kurzen Hinweis und hebt den passenden Bereich hervor; „Weiter“
+  führt durch den Ablauf.
+- **Vergleichsansicht:** In der Vorschau lässt sich das Original über einen Teiler direkt neben das
+  Ergebnis legen (Knopf „Vergleich“, Teiler mit der Maus ziehen).
+- **Verbrauch, Gewicht und Kosten** pro Filament in der Farbanalyse: Volumen, Gramm, Meter
+  (1,75 mm) und Preis, mit einstellbarem Preis pro kg.
+- **Druck-Assistent:** führt beim Drucken durch die Farbwechsel („Jetzt einlegen: … vor Schicht 17“),
+  große Anzeige mit Abhaken. Im Vollbild am PC oder als einzelne Datei fürs Handy
+  (`…_druckassistent.html`, wird beim Export mitgeschrieben, läuft ohne Internet).
+
+### Verbessert
+- Aufgeräumter: „Schichten“, „Bild“ und „Farbinseln“ sind anfangs eingeklappt.
+- Alle Regler und Schalter haben jetzt eine Erklärung beim Darüberfahren.
+
 ## 0.9.0 – 2026-11-25
 
 ### Neu

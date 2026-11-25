@@ -71,7 +71,7 @@ self.onmessage = (ev: MessageEvent) => {
       result = {
         width: hm.width, height: hm.height, preview: preview.buffer,
         layerCount: layerCount(hm), minLayer: minLayer(hm), size: sizeMm(hm), maxZ: maxZ(hm),
-        mode: effectiveMode(p), usage: filamentUsage(hm, est), stackLayers: hm.restLayers ?? layerCount(hm),
+        mode: effectiveMode(p), usage: filamentUsage(hm, est), stackLayers: hm.restLayers ?? layerCount(hm), border: hm.border_px,
         triangles: 2 * fullW * Math.round(fullW * hm.height / hm.width),
         mesh: { vertices: mesh.vertices.buffer, faces: mesh.faces.buffer, colors: colors.buffer, size: sizeMm(small) },
       };

@@ -59,9 +59,28 @@ export function filamentUsage(hm: HeightMap, stops: ColorStop[]) {
   const idx = innerIndices(hm);
   const segs = segments(stops, hm.base_layer_mm, hm.layer_height_mm, Math.max(layerCount(hm), 1));
   const eps = 1e-4;
+  const cell = hm.pixel_size_mm * hm.pixel_size_mm;
   return segs.map((s) => {
     let c = 0;
     for (const i of idx) { const h = hm.heights[i]; if (h > s.z0 + eps && h <= s.z1 + eps) c++; }
-    return { filament: s.filament, share: c / Math.max(1, idx.length), first: s.first, last: s.last };
+    // Volumen dieses Filaments: Material zwischen z0 und z1 über die ganze Fläche (inkl. Rahmen)
+    let vol = 0;
+    for (let i = 0; i < hm.heights.length; i++) {
+      if (hm.mask && !hm.mask[i]) continue;
+      const h = hm.heights[i];
+      if (h > s.z0) vol += (Math.min(h, s.z1) - s.z0) * cell;
+    }
+    return { filament: s.filament, share: c / Math.max(1, idx.length), first: s.first, last: s.last, z0: s.z0, z1: s.z1, volume_mm3: vol };
   });
+}
+
+/** Dichte in g/cm³ nach Material (Näherung). */
+export function materialDensity(material: string): number {
+  const m = material.toUpperCase();
+  if (m.includes("PETG")) return 1.27;
+  if (m.includes("ABS")) return 1.04;
+  if (m.includes("ASA")) return 1.07;
+  if (m.includes("TPU")) return 1.21;
+  if (m.includes("PC")) return 1.2;
+  return 1.24; // PLA
 }

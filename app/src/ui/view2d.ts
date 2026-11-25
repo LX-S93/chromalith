@@ -13,9 +13,36 @@ export class ImageView {
   onPick?: (px: number, py: number) => void;
   get size() { return [this.iw, this.ih] as const; }
 
+  /** Vergleich: zweites Bild (links vom Teiler sichtbar) */
+  private cmp = h("canvas", { class: "cmp" });
+  private divider = h("div", { class: "divider" }, h("span", null, "⇆"));
+  private split = 0.5;
+  private comparing = false;
+
+  /** Vergleichsbild setzen (gleiche Seitenlage wie das Hauptbild) oder mit null ausschalten. */
+  setCompare(src: HTMLCanvasElement | null) {
+    this.comparing = !!src;
+    this.cmp.style.display = this.divider.style.display = src ? "" : "none";
+    if (src) { this.cmp.width = src.width; this.cmp.height = src.height; this.cmp.getContext("2d")!.drawImage(src, 0, 0); }
+    this.apply();
+  }
+
   constructor() {
     this.canvas = h("canvas");
-    this.el = h("div", { class: "view canvas-view" }, this.canvas);
+    this.el = h("div", { class: "view canvas-view" }, this.canvas, this.cmp, this.divider);
+    this.cmp.style.display = this.divider.style.display = "none";
+    let dragDiv = false;
+    this.divider.addEventListener("pointerdown", (e) => { dragDiv = true; this.divider.setPointerCapture(e.pointerId); e.stopPropagation(); });
+    this.divider.addEventListener("pointermove", (e) => {
+      if (!dragDiv || !this.iw) return;
+      const r = this.el.getBoundingClientRect();
+      this.split = Math.min(1, Math.max(0, (e.clientX - r.left - this.x) / (this.iw * this.scale)));
+      this.apply(); e.stopPropagation();
+    });
+    const endDiv = (e: PointerEvent) => { dragDiv = false; e.stopPropagation(); };
+    this.divider.addEventListener("pointerup", endDiv);
+    this.divider.addEventListener("pointercancel", endDiv);
+    this.divider.addEventListener("dblclick", (e) => e.stopPropagation());
     this.el.addEventListener("wheel", (e) => {
       e.preventDefault();
       if (!this.iw) return;
@@ -79,5 +106,12 @@ export class ImageView {
     c.style.left = this.x + "px"; c.style.top = this.y + "px";
     c.style.width = this.iw * this.scale + "px"; c.style.height = this.ih * this.scale + "px";
     c.style.imageRendering = this.scale > 2.5 ? "pixelated" : "auto";
+    if (this.comparing) {
+      const m = this.cmp.style;
+      m.left = c.style.left; m.top = c.style.top; m.width = c.style.width; m.height = c.style.height;
+      m.clipPath = `inset(0 ${(1 - this.split) * 100}% 0 0)`;
+      const d = this.divider.style;
+      d.left = this.x + this.iw * this.scale * this.split + "px"; d.top = this.y + "px"; d.height = this.ih * this.scale + "px";
+    }
   }
 }

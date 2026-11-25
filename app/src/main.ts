@@ -4,7 +4,7 @@ import pkg from "../package.json";
 import {
   HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
   parseProject, serializeLibrary, serializeProject, starterLibrary, toRGBA8, validate, type ColorStop, type Filament,
-  type HeightSettings, type Island, type Raster,
+  materialDensity, type HeightSettings, type Island, type Raster,
 } from "./core";
 import * as compute from "./compute";
 import type { PreviewResult } from "./compute";
@@ -16,6 +16,7 @@ import { findLibraryFolders, importFiles, readFolder } from "./ui/importer";
 import { StackPanel } from "./ui/stack";
 import { openSuggest } from "./ui/suggest";
 import { IslandPanel } from "./ui/islands";
+import { assistantHtml, openAssistant, type AssistData } from "./ui/assistant";
 import { ImageView } from "./ui/view2d";
 import { ModelView } from "./ui/view3d";
 
@@ -112,6 +113,7 @@ menu.append(button(null, () => menu.classList.toggle("open"), { icon: "more", cl
     menuItem("Projekt speichern unter …", () => saveProject(true), "Strg+Umschalt+S", "save"),
     menuItem("Originalbild exportieren …", exportOriginal, "", "image"),
     menuItem("Vorschaubild exportieren …", exportPreview, "", "image"),
+    menuItem("Druck-Assistent (Farbwechsel) …", showAssistant, "", "layers"),
     menuItem("Filament-Bibliothek …", () => openLibrary(libHost).then(() => refreshAnalysis()), "Strg+L", "library"),
     menuItem("Über Chromalith", about, "", "layers")));
 document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target as Node)) menu.classList.remove("open"); });
@@ -132,32 +134,32 @@ const topbar = h("header", { class: "topbar" },
 // Linke Seite: Einstellungen
 const left = h("aside", { class: "left" },
   section("Größe", true,
-    sl("width_mm", "Breite", 10, 400, 1, "mm", "Breite des Modells", 1),
+    sl("width_mm", "Breite", 10, 400, 1, "mm", "Breite des fertigen Drucks. Die Höhe ergibt sich aus dem Seitenverhältnis des Bildes.", 1),
     sl("pixel_size_mm", "Rasterweite", 0.05, 1, 0.05, "mm", "Abstand der Modellpunkte. Kleiner = feiner, aber größere STL. 0,2 mm passt zu 0,4-mm-Düsen."),
-    sl("border_mm", "Rahmenbreite", 0, 20, 0.5, "mm", undefined, 1),
-    sl("border_height_mm", "Rahmenhöhe (0 = max.)", 0, 10, 0.08)),
+    sl("border_mm", "Rahmenbreite", 0, 20, 0.5, "mm", "Glatter Rahmen rund ums Bild. 0 = kein Rahmen.", 1),
+    sl("border_height_mm", "Rahmenhöhe (0 = max.)", 0, 10, 0.08, "mm", "Höhe des Rahmens. 0 = so hoch wie die höchste Stelle des Bildes.")),
   section("Form", true,
-    (fields.shape = selectField("Umriss", SHAPES, (v) => setSetting("shape", v as any))).el,
+    (fields.shape = selectField("Umriss", SHAPES, (v) => setSetting("shape", v as any), "Rund schneidet das Bild auf den größten Kreis in der Mitte zu, z. B. für Uhren.")).el,
     sl("hole_mm", "Mittelloch Ø", 0, 20, 0.5, "mm", "Loch in der Mitte, z. B. 8 mm für die Achse eines Uhrwerks. 0 = kein Loch.", 1),
     sl("rim_mm", "Erhöhter Rand", 0, 15, 0.5, "mm", "Außenrand, der über dem Bild steht und in der obersten Farbe gedruckt wird.", 1),
-    (fields.clock_numbers = switchField("Uhr-Ziffern 1–12", (v) => setSetting("clock_numbers", v))).el,
-    sl("numbers_mm", "Ziffernhöhe", 4, 40, 0.5, "mm", undefined, 1),
-    sl("raise_mm", "Rand/Ziffern über Bild", 0.08, 3, 0.08)),
-  section("Schichten", true,
-    sl("base_layer_mm", "Erste Schicht", 0.04, 0.4, 0.02),
-    sl("layer_height_mm", "Schichthöhe", 0.04, 0.32, 0.02),
-    sl("min_height_mm", "Minimale Höhe", 0.08, 5, 0.04),
-    sl("max_height_mm", "Maximale Höhe", 0.4, 10, 0.04)),
-  section("Bild", true,
+    (fields.clock_numbers = switchField("Uhr-Ziffern 1–12", (v) => setSetting("clock_numbers", v), "Setzt die Ziffern 1 bis 12 erhaben auf das Bild.")).el,
+    sl("numbers_mm", "Ziffernhöhe", 4, 40, 0.5, "mm", "Schriftgröße der Uhr-Ziffern.", 1),
+    sl("raise_mm", "Rand/Ziffern über Bild", 0.08, 3, 0.08, "mm", "So weit stehen Rand und Ziffern über der höchsten Stelle des Bildes.")),
+  section("Schichten", false,
+    sl("base_layer_mm", "Erste Schicht", 0.04, 0.4, 0.02, "mm", "Höhe der ersten Druckschicht. Muss im Slicer genauso eingestellt sein (Bambu/Orca: 0,20 mm)."),
+    sl("layer_height_mm", "Schichthöhe", 0.04, 0.32, 0.02, "mm", "Höhe aller weiteren Schichten. Kleiner = feinere Farbabstufungen, längerer Druck. Muss im Slicer genauso eingestellt sein."),
+    sl("min_height_mm", "Minimale Höhe", 0.08, 5, 0.04, "mm", "Dicke an der dünnsten Stelle des Bildes (Grundplatte)."),
+    sl("max_height_mm", "Maximale Höhe", 0.4, 10, 0.04, "mm", "Dicke an der dicksten Stelle. Mehr Höhe = mehr Schichten und feinere Abstufungen.")),
+  section("Bild", false,
     (fields.height_mode = selectField("Höhe aus", HEIGHT_MODES, (v) => setSetting("height_mode", v as any),
       "Automatisch: Bunte Filamente im Stapel = farbtreu. Sonst: Ist das oberste Filament dunkler als das unterste, werden dunkle Bildstellen hoch.")).el,
-    (fields.luma_method = selectField("Helligkeit", LUMA_METHODS, (v) => setSetting("luma_method", v as any))).el,
-    (fields.linearize = switchField("sRGB linearisieren", (v) => setSetting("linearize", v))).el,
+    (fields.luma_method = selectField("Helligkeit", LUMA_METHODS, (v) => setSetting("luma_method", v as any), "Wie aus den Bildfarben die Helligkeit berechnet wird. „Wahrnehmung“ passt fast immer.")).el,
+    (fields.linearize = switchField("sRGB linearisieren", (v) => setSetting("linearize", v), "Rechnet die Helligkeit physikalisch statt nach Bildschirmwerten. Macht Mitteltöne dunkler.")).el,
     sl("detail_mm", "Mindestdetail", 0, 2, 0.1, "mm", "Bildpunkte, die kleiner sind als dieser Wert, werden entfernt (Median-Filter). Verhindert einzelne Zacken im Relief. 0 = aus.", 1),
     sl("smoothing_px", "Glätten", 0, 10, 0.25, "px", "Weichzeichnen des Bildes vor der Höhenberechnung."),
-    sl("brightness", "Helligkeit +/-", -1, 1, 0.02, ""),
-    sl("contrast", "Kontrast", 0, 4, 0.05, ""),
-    sl("gamma", "Gamma", 0.2, 5, 0.05, "")));
+    sl("brightness", "Helligkeit +/-", -1, 1, 0.02, "", "Hellt das Bild vor der Berechnung auf oder dunkelt es ab."),
+    sl("contrast", "Kontrast", 0, 4, 0.05, "", "Über 1 = stärkere Unterschiede zwischen Hell und Dunkel."),
+    sl("gamma", "Gamma", 0.2, 5, 0.05, "", "Verschiebt die Mitteltöne: über 1 dunkler, unter 1 heller.")));
 
 // Farbinseln
 let pickCallback: ((p: { x: number; y: number; color: string }) => void) | null = null;
@@ -201,7 +203,65 @@ function showTab(i: number) {
   if (i === 2) view3d.resize();
 }
 TABS.forEach(([label], i) => tabs.append(h("button", { class: "tab", onclick: () => showTab(i) }, label)));
-const main = h("main", { class: "main" }, tabs, views);
+// Vergleich Original/Ergebnis
+let compareOn = store.get("compare", false);
+const compareBtn = button("Vergleich", () => { compareOn = !compareOn; store.set("compare", compareOn); updateCompare(); },
+  { icon: "swap", cls: "small", title: "Original und Ergebnis nebeneinander: Teiler mit der Maus verschieben" });
+viewPreview.el.append(h("div", { class: "view-tools" }, compareBtn));
+function updateCompare() {
+  compareBtn.classList.toggle("on", compareOn);
+  compareBtn.textContent = ""; compareBtn.append(icon("swap"), compareOn ? "Vergleich: links Original, rechts Ergebnis" : "Vergleich");
+  const r = state.result, img = state.image;
+  if (!compareOn || !r || !img) { viewPreview.setCompare(null); return; }
+  // Original auf das Raster der Vorschau legen (runder Zuschnitt und Rahmen wie im Modell)
+  const src = h("canvas", { width: img.width, height: img.height });
+  src.getContext("2d")!.putImageData(new ImageData(toRGBA8(img) as any, img.width, img.height), 0, 0);
+  const c = h("canvas", { width: r.width, height: r.height });
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#2b2b2b"; g.fillRect(0, 0, r.width, r.height);
+  let sx = 0, sy = 0, sw = img.width, sh = img.height;
+  if (state.settings.shape === "circle" && sw !== sh) { const side = Math.min(sw, sh); sx = Math.floor((sw - side) / 2); sy = Math.floor((sh - side) / 2); sw = sh = side; }
+  g.imageSmoothingQuality = "high";
+  g.drawImage(src, sx, sy, sw, sh, r.border, r.border, r.width - 2 * r.border, r.height - 2 * r.border);
+  viewPreview.setCompare(c);
+}
+
+// Schritt-Leiste
+const STEPS = ["Bild", "Größe & Form", "Filamente", "Vorschau", "Export"];
+const STEP_HINTS = [
+  "Bild öffnen oder ins Fenster ziehen.",
+  "Links Breite und Form einstellen. Schichten und Bildkorrektur sind unter „Schichten“ und „Bild“ eingeklappt.",
+  "Rechts den Filament-Stapel wählen. „Filamente vorschlagen“ sucht das beste Set, „Automatisch verteilen“ legt die Wechsel.",
+  "Ergebnis prüfen: Vergleich mit dem Original, 3D-Ansicht, Farbanalyse mit Verbrauch und Kosten.",
+  "Exportieren schreibt STL, 3MF mit Farbwechseln, Farbwechsel-Liste und den Druck-Assistenten.",
+];
+let step = 0;
+const stepsEl = h("div", { class: "steps" });
+const stepHint = h("div", { class: "step-hint" });
+const flash = (el: HTMLElement) => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
+function renderSteps() {
+  clear(stepsEl);
+  STEPS.forEach((label, i) => {
+    if (i) stepsEl.append(h("div", { class: "step-sep" }));
+    stepsEl.append(h("button", { class: "step" + (i === step ? " current" : i < step ? " done" : ""), title: STEP_HINTS[i], onclick: () => goStep(i) },
+      h("i", null, i < step ? "✓" : String(i + 1)), label));
+  });
+  stepHint.textContent = STEP_HINTS[step];
+  stepsEl.append(stepHint);
+  if (step < STEPS.length - 1 && state.image) stepsEl.append(button("Weiter", () => goStep(step + 1), { cls: "small primary" }));
+}
+function goStep(i: number) {
+  if (i > 0 && !state.image) { toast("Bitte zuerst ein Bild öffnen."); i = 0; }
+  step = i; renderSteps();
+  const sections = [...left.querySelectorAll("details")] as HTMLDetailsElement[];
+  if (i === 0) { if (!state.image) openImage(); else showTab(1); }
+  if (i === 1) { sections.forEach((d, k) => (d.open = k < 2)); left.scrollTop = 0; flash(left); showTab(0); }
+  if (i === 2) { flash(stack.el); showTab(0); }
+  if (i === 3) { showTab(0); if (!compareOn) { compareOn = true; store.set("compare", true); } updateCompare(); }
+  if (i === 4) exportAll();
+}
+
+const main = h("main", { class: "main" }, stepsEl, tabs, views);
 
 // Rechts: Stapel
 const stack = new StackPanel({
@@ -243,6 +303,7 @@ viewPreview.onHover = (px, py) => {
 
 app.append(topbar, left, main, stack.el, status);
 showTab(0);
+renderSteps(); updateCompare();
 syncFields();
 stack.render();
 setStatus(["Bild öffnen (Strg+O) oder Bild ins Fenster ziehen, um zu beginnen."]);
@@ -339,6 +400,7 @@ async function rebuild() {
     stack.setInfo({ layerCount: r.stackLayers, minLayer: r.minLayer, base: state.settings.base_layer_mm, step, colorMode: r.mode === "color" });
     syncMode(r.mode);
     refreshAnalysis();
+    updateCompare();
     const changes = Math.max(0, r.usage.length - 1);
     setStatus([
       `<b>${r.size[0].toFixed(1)} × ${r.size[1].toFixed(1)} mm</b>`, `${r.layerCount} Schichten`, `max. ${r.maxZ.toFixed(2)} mm`,
@@ -412,7 +474,51 @@ function refreshAnalysis() {
   const unused = use.filter((u, i) => i > 0 && u.share < 0.01).map((u) => u.filament.name);
   if (unused.length) useCard.append(h("p", { class: "hint warn", style: { marginTop: "10px" } },
     `Kaum sichtbar (unter 1 %): ${unused.join(", ")}. Diese Filamente kann man meist weglassen und spart einen Farbwechsel.`));
-  analysisEl.append(imgCard, useCard);
+  analysisEl.append(imgCard, useCard, costCard());
+}
+
+/** Verbrauch, Gewicht und Kosten je Filament (aus dem Volumen der Schichten). */
+function consumption() {
+  const price = store.get("pricePerKg", 25);
+  return (state.result?.usage ?? []).map((u) => {
+    const cm3 = u.volume_mm3 / 1000, g = cm3 * materialDensity(u.filament.material);
+    return { u, cm3, g, m: u.volume_mm3 / (Math.PI * 0.875 * 0.875) / 1000, cost: (g / 1000) * price };
+  });
+}
+function costCard() {
+  const rows = consumption();
+  const card = h("div", { class: "card wide" }, h("h3", null, "Verbrauch, Gewicht und Kosten"),
+    h("p", { class: "hint" }, "Aus dem Volumen der Schichten berechnet (massiv gedruckt, ohne Spülmenge beim Farbwechsel und ohne Stützen)."));
+  if (!rows.length) { card.append(h("div", { class: "hint" }, "Erscheint, sobald ein Bild berechnet ist.")); return card; }
+  const priceIn = h("input", { class: "num", type: "number", min: 0, step: 1, value: store.get("pricePerKg", 25), style: { width: "70px" } });
+  priceIn.addEventListener("change", () => { store.set("pricePerKg", Math.max(0, Number(priceIn.value) || 0)); refreshAnalysis(); });
+  const f = (v: number, d = 1) => v.toFixed(d).replace(".", ",");
+  const sum = rows.reduce((a, r) => ({ cm3: a.cm3 + r.cm3, g: a.g + r.g, m: a.m + r.m, cost: a.cost + r.cost }), { cm3: 0, g: 0, m: 0, cost: 0 });
+  card.append(
+    h("table", { class: "use-table" },
+      h("thead", null, h("tr", null, ...["", "Filament", "Schichten", "Volumen", "Gewicht", "Länge (1,75 mm)", "Kosten"].map((t) => h("th", null, t)))),
+      h("tbody", null, ...[...rows].reverse().map((r) => h("tr", null,
+        h("td", null, h("div", { class: "swatch", style: { background: r.u.filament.color } })),
+        h("td", null, filamentLabel(r.u.filament)), h("td", null, `${r.u.first}–${r.u.last}`),
+        h("td", null, `${f(r.cm3)} cm³`), h("td", null, `${f(r.g)} g`), h("td", null, `${f(r.m, 2)} m`), h("td", null, `${f(r.cost, 2)} €`)))),
+      h("tfoot", null, h("tr", null, h("td", null, ""), h("td", null, "Gesamt"), h("td", null, ""),
+        h("td", null, `${f(sum.cm3)} cm³`), h("td", null, `${f(sum.g)} g`), h("td", null, `${f(sum.m, 2)} m`), h("td", null, `${f(sum.cost, 2)} €`)))),
+    h("div", { style: { display: "flex", gap: "10px", alignItems: "center", marginTop: "12px", flexWrap: "wrap" } },
+      h("span", { class: "hint" }, "Preis pro kg"), priceIn, h("span", { class: "hint" }, "€"), h("div", { class: "spacer" }),
+      button("Druck-Assistent öffnen", showAssistant, { icon: "layers", cls: "small primary", title: "Führt beim Drucken Schritt für Schritt durch die Farbwechsel" })));
+  return card;
+}
+
+function assistData(): AssistData | null {
+  const r = state.result;
+  if (!r) return null;
+  return { name: state.name, base: state.settings.base_layer_mm, step: state.settings.layer_height_mm, layers: r.layerCount, maxZ: r.maxZ,
+    usage: r.usage.map((u) => ({ filament: u.filament, first: u.first, last: u.last })) };
+}
+function showAssistant() {
+  const d = assistData();
+  if (!d) { toast("Bitte zuerst ein Bild öffnen."); return; }
+  openAssistant(d);
 }
 
 // ------------------------------------------------------------------ Dateien
@@ -424,6 +530,7 @@ async function setImage(img: Raster, png: Uint8Array | null) {
   state.palette = palette;
   dropzone.style.display = "none";
   refreshAnalysis();
+  if (step === 0) { step = 1; renderSteps(); }
 }
 
 async function loadImageBytes(name: string, bytes: Uint8Array) {
@@ -509,6 +616,7 @@ async function newProject() {
   await compute.setImage(null);
   viewPreview.clear(); viewOriginal.clear(); view3d.clear();
   syncFields(); stack.render(); refreshAnalysis(); showTab(0);
+  step = 0; renderSteps(); viewPreview.setCompare(null);
   resetHistory();
   state.dirty = false; updateTitle();
   setStatus(["Bild öffnen (Strg+O) oder Bild ins Fenster ziehen, um zu beginnen."]);
@@ -530,6 +638,9 @@ async function exportAll() {
       await saveSibling(path, "_farbwechsel.txt", r.report),
       await saveSibling(path, "_farbwechsel.json", r.json),
       await saveSibling(path, "_vorschau.png", png)];
+    const ad = assistData();
+    if (ad) files.push(await saveSibling(path, "_druckassistent.html", assistantHtml(ad)));
+    if (step < 4) { step = 4; renderSteps(); }
     const close = modal("Export fertig", h("div", null,
       h("p", { style: { marginTop: 0 } }, "Geschrieben:"),
       h("ul", { style: { paddingLeft: "18px", lineHeight: "1.7" } }, ...files.map((f) => h("li", null, f.split(/[\\/]/).pop()!))),
@@ -538,7 +649,7 @@ async function exportAll() {
         `Im Prozess muss die erste Schicht ${state.settings.base_layer_mm.toFixed(2)} mm und die Schichthöhe ${state.settings.layer_height_mm.toFixed(2)} mm sein ` +
         "(die Schichthöhe ist am Objekt schon eingetragen). Für andere Slicer stehen die Wechsel in der _farbwechsel.txt."),
       h("pre", { style: { background: "var(--bg)", padding: "10px", borderRadius: "8px", maxHeight: "260px", overflow: "auto", fontSize: "12px" } }, r.report)),
-      [button("OK", () => close(), { cls: "primary" })]);
+      [button("Druck-Assistent öffnen", () => { close(); showAssistant(); }, { icon: "layers" }), button("OK", () => close(), { cls: "primary" })]);
   } catch (e: any) { toast("Export fehlgeschlagen: " + e.message, "err"); }
   finally { if (!running) busy.classList.remove("on"); }
 }

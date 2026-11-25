@@ -24,7 +24,8 @@ export interface PreviewResult {
   width: number; height: number; preview: ArrayBuffer;
   layerCount: number; minLayer: number; size: [number, number]; maxZ: number;
   mode: "bright_high" | "dark_high" | "color";
-  usage: { filament: ColorStop["filament"]; share: number; first: number; last: number }[];
+  usage: { filament: ColorStop["filament"]; share: number; first: number; last: number; z0: number; z1: number; volume_mm3: number }[];
+  border: number;
   triangles: number;
   stackLayers: number;
   mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; size: [number, number] };
