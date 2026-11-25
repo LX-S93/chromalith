@@ -2,6 +2,18 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.12.0 – 2026-11-25
+
+- **Schicht-Regler in der 3D-Ansicht**: zeigt den Druck nur bis Schicht X, in den Farben, die er in diesem
+  Moment hat. So siehst du, wie das Bild Schicht für Schicht entsteht und was jeder Farbwechsel bewirkt.
+- **Rechtsklick auf ein Filament im Stapel**: Ausblenden (bleibt im Stapel, wird aber nicht gedruckt und nicht
+  berechnet), Ersetzen durch ein anderes Filament (Schicht bleibt), Bearbeiten, Verschieben, Entfernen.
+  Alles lässt sich rückgängig machen; ausgeblendete Filamente werden im Projekt gespeichert.
+- **Rechtsklick in der Bibliothek**: Bearbeiten, als vorhanden markieren, Duplizieren, Löschen.
+- **Keine Zickzack-Rillen mehr in ebenen Flächen**: Fast einfarbige Hintergründe, die genau an einer
+  Schichtgrenze lagen, bekamen bisher Rillen und Flecken von einer Schicht Höhe. Solche Scheinstufen werden
+  jetzt entfernt; echte Kanten und Verläufe bleiben. Das gilt auch für STL und 3MF.
+
 ## 0.11.0 – 2026-11-25
 
 - **Spoolman-Anbindung**: In der Filament-Bibliothek unter „Spoolman“ (oder im Menü „…“) die Adresse

@@ -71,7 +71,7 @@ const b64decode = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)
 export function serializeProject(p: Project): string {
   return JSON.stringify({
     format: PROJECT_FORMAT, version: 1, name: p.name, settings: p.settings,
-    plan: p.stops.map((s) => ({ start_layer: s.start_layer, filament: s.filament })),
+    plan: p.stops.map((s) => ({ start_layer: s.start_layer, filament: s.filament, ...(s.disabled ? { disabled: true } : {}) })),
     islands: p.islands ?? [],
     image_png: p.imagePng ? b64encode(p.imagePng) : null,
   });
@@ -90,6 +90,7 @@ export function parseProject(text: string): ParsedProject {
   if (d.format !== PROJECT_FORMAT) throw new Error("Keine Chromalith-Projektdatei.");
   const stops: ColorStop[] = (d.plan ?? []).map((s: any) => ({
     start_layer: Number(s.start_layer),
+    ...(s.disabled === true ? { disabled: true } : {}),
     filament: { id: String(s.filament.id), name: String(s.filament.name), brand: String(s.filament.brand ?? ""),
       material: String(s.filament.material ?? "PLA"), color: String(s.filament.color), td: Number(s.filament.td),
       owned: Boolean(s.filament.owned), ...filamentExtras(s.filament) } as Filament,

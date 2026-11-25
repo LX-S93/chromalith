@@ -28,7 +28,8 @@ export interface PreviewResult {
   border: number;
   triangles: number;
   stackLayers: number;
-  mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; size: [number, number] };
+  simStops: ColorStop[];
+  mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; top: ArrayBuffer; size: [number, number] };
 }
 
 let islandState: unknown[] = [];

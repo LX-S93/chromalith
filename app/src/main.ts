@@ -4,7 +4,7 @@ import pkg from "../package.json";
 import {
   HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
   parseProject, serializeLibrary, serializeProject, starterLibrary, toRGBA8, validate, type ColorStop, type Filament,
-  materialDensity, type HeightSettings, type Island, type Raster,
+  materialDensity, filamentAtLayer, layerTopZ, simulate, type HeightSettings, type Island, type Raster,
 } from "./core";
 import * as compute from "./compute";
 import type { PreviewResult } from "./compute";
@@ -39,6 +39,8 @@ const state = {
   previewRgba: null as Uint8ClampedArray | null,
   palette: [] as { color: string; share: number }[],
 };
+/** Filamente, die gedruckt werden (ohne ausgeblendete). */
+const activeStops = () => state.stops.filter((s) => !s.disabled);
 const saveLibrary = () => store.set("library", library);
 const libHost = { library, saveLibrary };
 
@@ -186,8 +188,25 @@ const zLabel = h("span", null, "2×");
 const zRange = h("input", { type: "range", min: 1, max: 6, step: 0.5, value: 2, style: { width: "110px" } });
 zRange.addEventListener("input", () => { zLabel.textContent = `${zRange.value}×`; view3d.setZScale(Number(zRange.value)); });
 view3d.setZScale(2);
-view3d.el.append(h("div", { class: "zbar" }, h("span", { class: "hint" }, "Höhe überhöhen"), zRange, zLabel),
-  h("div", { class: "overlay-hint" }, "Ziehen = drehen · Rechts ziehen = verschieben · Rad = zoomen"));
+// Schicht-Regler: den Druck nur bis Schicht X ansehen (wie er nach jedem Farbwechsel aussieht)
+const cutLabel = h("span", { style: { minWidth: "150px" } }, "alle Schichten");
+const cutRange = h("input", { type: "range", min: 1, max: 1, step: 1, value: 1, style: { width: "180px" },
+  title: "Zeigt den Druck nur bis zu dieser Schicht – so siehst du, wie das Bild Schicht für Schicht entsteht." });
+let cutFull = true;
+function applyCut() {
+  const r = state.result;
+  if (!r) return;
+  const max = r.layerCount, layer = Math.min(max, Number(cutRange.value));
+  cutFull = layer >= max;
+  const base = state.settings.base_layer_mm, step = state.settings.layer_height_mm;
+  if (cutFull) { cutLabel.textContent = `alle ${max} Schichten`; view3d.setCut(null); return; }
+  const f = filamentAtLayer(r.simStops, layer);
+  cutLabel.textContent = `Schicht ${layer} / ${max}${f ? " · " + f.name : ""}`;
+  view3d.setCut({ z: layerTopZ(layer, base, step), colorOf: (z) => simulate({ heights: z, base_layer_mm: base, layer_height_mm: step, mask: null } as any, r.simStops, z, false) });
+}
+cutRange.addEventListener("input", applyCut);
+view3d.el.append(h("div", { class: "zbar" }, h("span", { class: "hint" }, "Schicht"), cutRange, cutLabel, h("div", { class: "sep" }), h("span", { class: "hint" }, "Höhe überhöhen"), zRange, zLabel),
+  h("div", { class: "overlay-hint", style: { bottom: "auto", top: "12px" } }, "Ziehen = drehen · Rechts ziehen = verschieben · Rad = zoomen"));
 viewPreview.el.append(h("div", { class: "overlay-hint" }, "Rad = zoomen · Ziehen = verschieben · Doppelklick = einpassen"));
 const busy = h("div", { class: "busy" }, h("div", { class: "spinner" }), "Berechne …");
 const dropzone = h("div", { class: "dropzone" }, h("div", { class: "card" },
@@ -276,6 +295,8 @@ const stack = new StackPanel({
   auto: autoDistribute,
   suggest: suggestFilaments,
   loadSet,
+  pick: async () => (await openLibrary(libHost, true))[0] ?? null,
+  edit: (f) => editFilament({ ...f }),
   saveSet: () => saveFile("set.json", serializeLibrary(state.stops.map((s) => s.filament)), [{ name: "Filament-Set", extensions: ["json"] }]),
 });
 
@@ -398,11 +419,14 @@ async function rebuild() {
   running = true; busy.classList.add("on");
   compute.setIslands(state.islands);
   try {
-    const r = await compute.preview(state.settings, state.stops);
+    const r = await compute.preview(state.settings, activeStops());
     state.result = r;
     state.previewRgba = new Uint8ClampedArray(r.preview);
     viewPreview.set(state.previewRgba, r.width, r.height);
+    cutRange.max = String(r.layerCount);
+    if (cutFull || Number(cutRange.value) > r.layerCount) cutRange.value = String(r.layerCount);
     view3d.setMesh(r.mesh);
+    applyCut();
     const step = state.settings.layer_height_mm;
     stack.setInfo({ layerCount: r.stackLayers, minLayer: r.minLayer, base: state.settings.base_layer_mm, step, colorMode: r.mode === "color" });
     syncMode(r.mode);
@@ -426,7 +450,9 @@ async function autoDistribute() {
   busy.classList.add("on");
   try {
     compute.setIslands(state.islands);
-  const { stops } = await compute.autoDistribute(state.settings, state.stops);
+  const off = state.stops.filter((s) => s.disabled);
+  const { stops } = await compute.autoDistribute(state.settings, activeStops());
+  stops.push(...off);
     state.stops.splice(0, state.stops.length, ...stops.sort((a, b) => a.start_layer - b.start_layer));
     stack.render(); markDirty(); noteChange(); await rebuild();
   } catch (e: any) { toast("Automatisch verteilen fehlgeschlagen: " + e.message, "err"); }
@@ -644,7 +670,7 @@ async function exportAll() {
   busy.classList.add("on");
   try {
     compute.setIslands(state.islands);
-    const r = await compute.exportAll(state.settings, state.stops, state.name);
+    const r = await compute.exportAll(state.settings, activeStops(), state.name);
     const stl = new Uint8Array(r.stl);
     const path = await saveFile(`${state.name}.stl`, stl, [{ name: "STL", extensions: ["stl"] }]);
     if (!path) return;

@@ -171,6 +171,78 @@ export interface BuildOptions {
   renderDigits?: DigitRenderer;
 }
 
+/** Beruhigt fast ebene Flächen: Wo in der Umgebung nur zwei benachbarte Schichten vorkommen (z. B. ein fast
+ *  weißer Hintergrund genau an einer Rundungsgrenze), gewinnt die Mehrheit. Das entfernt haarfeine Rillen und
+ *  Sprenkel von einer Schicht Höhe, die sich ohnehin nicht sauber drucken lassen. Kanten und Details mit mehr
+ *  als einer Schicht Unterschied bleiben unberührt. */
+export function calmLayers(heights: Float32Array, w: number, h: number, step: number, r = 1, passes = 2): void {
+  const tol = step * 0.25, win = (2 * r + 1) ** 2;
+  for (let p = 0; p < passes; p++) {
+    const src = heights.slice();
+    let changed = 0;
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const v = src[y * w + x];
+        let lo = v, hi = v, nHi = 0, nLo = 0, ok = true;
+        for (let dy = -r; dy <= r && ok; dy++) {
+          const yy = Math.min(h - 1, Math.max(0, y + dy)) * w;
+          for (let dx = -r; dx <= r; dx++) {
+            const u = src[yy + Math.min(w - 1, Math.max(0, x + dx))];
+            if (u < lo) lo = u; else if (u > hi) hi = u;
+            if (hi - lo > step + tol) { ok = false; break; }
+          }
+        }
+        if (!ok || hi - lo < tol) continue;
+        const mid = (lo + hi) / 2;
+        for (let dy = -r; dy <= r; dy++) {
+          const yy = Math.min(h - 1, Math.max(0, y + dy)) * w;
+          for (let dx = -r; dx <= r; dx++) src[yy + Math.min(w - 1, Math.max(0, x + dx))] > mid ? nHi++ : nLo++;
+        }
+        const t = nHi * 2 > win ? hi : nLo * 2 > win ? lo : v;
+        if (t !== v) { heights[y * w + x] = t; changed++; }
+      }
+    if (!changed) break;
+  }
+}
+
+/** Entfernt Scheinstufen: Flecken, die nur knapp über eine Rundungsgrenze gerutscht sind (z. B. eine kaum
+ *  sichtbare Struktur in einem fast weißen Hintergrund), werden der umgebenden Schicht zugeschlagen. Ein Fleck
+ *  gilt als Scheinstufe, wenn sein Mittelwert (vor dem Runden) nah an der Nachbarschicht liegt und er fast
+ *  ganz von genau dieser Schicht umgeben ist. Echte Verläufe und Kanten bleiben, weil deren Stufen mittig liegen. */
+export function calmRegions(heights: Float32Array, cont: Float32Array, w: number, h: number, step: number, near = 0.72): void {
+  const n = w * h, label = new Int32Array(n).fill(-1), queue = new Int32Array(n);
+  const same = (a: number, b: number) => Math.abs(a - b) < step * 0.25;
+  for (let pass = 0; pass < 2; pass++) {
+    label.fill(-1);
+    let changed = false;
+    for (let s0 = 0; s0 < n; s0++) {
+      if (label[s0] >= 0) continue;
+      const v = heights[s0];
+      let head = 0, tail = 0, sum = 0, up = 0, down = 0, other = 0;
+      queue[tail++] = s0; label[s0] = s0;
+      while (head < tail) {
+        const i = queue[head++], x = i % w;
+        sum += cont[i];
+        for (let k = 0; k < 4; k++) {
+          const j = k === 0 ? i - 1 : k === 1 ? i + 1 : k === 2 ? i - w : i + w;
+          if (j < 0 || j >= n || (k === 0 && x === 0) || (k === 1 && x === w - 1)) continue;
+          const u = heights[j];
+          if (same(u, v)) { if (label[j] < 0) { label[j] = s0; queue[tail++] = j; } }
+          else if (same(u, v + step)) up++; else if (same(u, v - step)) down++; else other++;
+        }
+      }
+      const border = up + down + other;
+      if (!border || tail > n * 0.4) continue;
+      const mean = sum / tail, d = (mean - v) / step; // Lage innerhalb der Schicht: -0,5 … +0,5
+      const target = up >= border * 0.8 && d > 1 - near ? v + step : down >= border * 0.8 && d < -(1 - near) ? v - step : NaN;
+      if (Number.isNaN(target)) continue;
+      for (let q = 0; q < tail; q++) heights[queue[q]] = target;
+      changed = true;
+    }
+    if (!changed) break;
+  }
+}
+
 export function buildHeightmap(img: Raster, s: HeightSettings, opt: BuildOptions): HeightMap {
   validate(s);
   const { w, h, rgb, alpha } = prepareImage(img, s);
@@ -199,8 +271,11 @@ export function buildHeightmap(img: Raster, s: HeightSettings, opt: BuildOptions
   }
   for (let i = 0; i < n; i++) {
     if (alpha[i] < 0.5) heights[i] = s.min_height_mm;
-    heights[i] = quantize(heights[i], s.base_layer_mm, s.layer_height_mm);
   }
+  const cont = heights.slice();
+  for (let i = 0; i < n; i++) heights[i] = quantize(heights[i], s.base_layer_mm, s.layer_height_mm);
+  calmRegions(heights, cont, w, h, s.layer_height_mm);
+  calmLayers(heights, w, h, s.layer_height_mm, Math.max(1, Math.min(2, Math.round(0.4 / s.pixel_size_mm))));
   let hm: HeightMap = { width: w, height: h, heights, pixel_size_mm: s.pixel_size_mm, base_layer_mm: s.base_layer_mm,
     layer_height_mm: s.layer_height_mm, rgb, border_px: 0, mask: null };
   if (s.border_mm > 0) hm = addBorder(hm, s);

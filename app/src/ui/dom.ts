@@ -66,6 +66,27 @@ export function toast(text: string, kind: "" | "ok" | "err" = "", ms = 4200) {
   setTimeout(() => t.remove(), ms);
 }
 
+/** Kontextmenü an der Mausposition. Einträge mit `null` sind Trennlinien. */
+export function contextMenu(e: MouseEvent, items: ({ label: string; icon?: string; danger?: boolean; fn: () => void } | null)[]) {
+  e.preventDefault(); e.stopPropagation();
+  document.querySelectorAll(".ctx-menu").forEach((m) => m.remove());
+  const box = h("div", { class: "menu-list ctx-menu" });
+  const close = () => { box.remove(); document.removeEventListener("mousedown", onDown, true); document.removeEventListener("keydown", onKey, true); };
+  const onDown = (ev: MouseEvent) => { if (!box.contains(ev.target as Node)) close(); };
+  const onKey = (ev: KeyboardEvent) => { if (ev.key === "Escape") { ev.stopPropagation(); close(); } };
+  for (const it of items) {
+    if (!it) { box.append(h("hr")); continue; }
+    const b = h("button", { onclick: () => { close(); it.fn(); } }, it.icon ? icon(it.icon) : h("span", { style: { width: "16px" } }), it.label);
+    if (it.danger) b.style.color = "var(--err)";
+    box.append(b);
+  }
+  document.body.append(box);
+  const r = box.getBoundingClientRect();
+  box.style.left = `${Math.max(4, Math.min(e.clientX, window.innerWidth - r.width - 6))}px`;
+  box.style.top = `${Math.max(4, Math.min(e.clientY, window.innerHeight - r.height - 6))}px`;
+  setTimeout(() => { document.addEventListener("mousedown", onDown, true); document.addEventListener("keydown", onKey, true); });
+}
+
 /** Einfacher modaler Dialog. Gibt eine Funktion zum Schließen zurück; onClose wird immer genau einmal gerufen. */
 export function modal(title: string, content: HTMLElement, footer: HTMLElement[] = [], small = false, onClose?: () => void): () => void {
   const back = h("div", { class: "modal-back" });

@@ -1,6 +1,6 @@
 /** Filament-Stapel: Liste (oben = zuletzt gedruckt), Startschichten, Schichtbalken mit ziehbaren Wechseln. */
 import { filamentAtLayer, filamentLabel, filamentLuminance, layerTopZ, type ColorStop } from "../core";
-import { button, clear, h } from "./dom";
+import { button, clear, contextMenu, h } from "./dom";
 
 export interface LayerInfo { layerCount: number; minLayer: number; base: number; step: number; colorMode: boolean }
 
@@ -12,6 +12,9 @@ export interface StackHost {
   loadSet(): void;
   suggest(): void;
   saveSet(): void;
+  /** Ein Filament aus der Bibliothek wählen (für „Ersetzen durch …“). */
+  pick(): Promise<ColorStop["filament"] | null>;
+  edit(f: ColorStop["filament"]): Promise<ColorStop["filament"] | null>;
 }
 
 export class StackPanel {
@@ -82,12 +85,26 @@ export class StackPanel {
       const z = h("div", { class: "z" });
       this.zLabels.set(idx, z);
       const above = s.start_layer > this.li.layerCount && idx > 0;
-      const row = h("div", { class: "stop" + (this.selected === idx ? " selected" : ""), style: { opacity: above ? "0.5" : "1" } },
+      const row = h("div", { class: "stop" + (this.selected === idx ? " selected" : "") + (s.disabled ? " off" : ""), style: { opacity: above || s.disabled ? "0.5" : "1" },
+        title: s.disabled ? "Ausgeblendet: wird nicht gedruckt. Rechtsklick zum Einblenden." : "Rechtsklick: ausblenden, ersetzen, bearbeiten, entfernen" },
         h("div", { class: "swatch", style: { background: s.filament.color } }),
         h("div", { class: "title" }, h("b", null, filamentLabel(s.filament)),
-          h("small", null, `${s.filament.material} · TD ${s.filament.td.toFixed(1)}`)),
+          h("small", null, s.disabled ? "ausgeblendet" : `${s.filament.material} · TD ${s.filament.td.toFixed(1)}`)),
         h("div", null, h("div", { class: "layer" }, h("span", { class: "hint" }, "ab"), input), z));
       row.addEventListener("click", () => { this.selected = idx; this.render(); });
+      row.addEventListener("contextmenu", (e) => {
+        this.selected = idx; this.render();
+        contextMenu(e, [
+          { label: s.disabled ? "Einblenden" : "Ausblenden (nicht drucken)", icon: "layers", fn: () => this.toggle(idx) },
+          { label: "Ersetzen durch …", icon: "swap", fn: () => this.replace(idx) },
+          { label: "Bearbeiten …", icon: "edit", fn: () => this.edit(idx) },
+          null,
+          { label: "Nach oben", icon: "up", fn: () => this.move(+1) },
+          { label: "Nach unten", icon: "down", fn: () => this.move(-1) },
+          null,
+          { label: "Aus dem Stapel entfernen", icon: "trash", danger: true, fn: () => this.remove() },
+        ]);
+      });
       this.list.append(row);
     }
     this.updateZ();
@@ -128,6 +145,29 @@ export class StackPanel {
     return d.every((x) => x <= 0.03) || d.every((x) => x >= -0.03);
   }
 
+  private toggle(idx: number) {
+    const s = this.stops[idx];
+    if (!s.disabled && this.stops.filter((x) => !x.disabled).length <= 1) return;
+    if (s.disabled) delete s.disabled; else s.disabled = true;
+    this.render(); this.host.changed(true);
+  }
+
+  private async replace(idx: number) {
+    const s = this.stops[idx];
+    const f = await this.host.pick();
+    if (!f || this.stops[idx] !== s) return;
+    s.filament = { ...f };
+    this.render(); this.host.changed(true);
+  }
+
+  private async edit(idx: number) {
+    const s = this.stops[idx];
+    const f = await this.host.edit(s.filament);
+    if (!f || this.stops[idx] !== s) return;
+    s.filament = f;
+    this.render(); this.host.changed(true);
+  }
+
   private remove() {
     if (this.selected === null) return;
     this.stops.splice(this.selected, 1);
@@ -140,6 +180,8 @@ export class StackPanel {
     const i = this.selected, st = this.stops;
     if (i === null || i + dir < 0 || i + dir >= st.length) return;
     [st[i].filament, st[i + dir].filament] = [st[i + dir].filament, st[i].filament];
+    [st[i].disabled, st[i + dir].disabled] = [st[i + dir].disabled, st[i].disabled];
+    for (const s of [st[i], st[i + dir]]) if (!s.disabled) delete s.disabled;
     this.selected = i + dir;
     this.render(); this.host.changed(true);
   }
@@ -197,7 +239,7 @@ export class StackPanel {
     }
     g.lineWidth = 2;
     this.stops.forEach((s, i) => {
-      if (i === 0 || s.start_layer > n) return;
+      if (i === 0 || s.start_layer > n || s.disabled) return;
       const y = r.height - (s.start_layer - 1) * lh;
       g.strokeStyle = i === this.selected ? "#fff" : "#ffffffaa";
       g.beginPath(); g.moveTo(0, y); g.lineTo(r.width, y); g.stroke();

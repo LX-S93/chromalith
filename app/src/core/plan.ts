@@ -10,6 +10,8 @@ export const BACKGROUND: [number, number, number] = [0.17, 0.17, 0.17];
 export interface ColorStop {
   filament: Filament;
   start_layer: number; // 1-basiert
+  /** Vorübergehend ausgeblendet: bleibt im Stapel, wird aber nicht gedruckt und nicht berechnet. */
+  disabled?: boolean;
 }
 
 export interface Segment {
@@ -27,7 +29,7 @@ export const ordered = (stops: ColorStop[]) => stops.map((s, i) => [s, i] as con
 /** Sortiert, erste Startschicht = 1, gleiche Startschicht: letzte gewinnt. */
 export function normalized(stops: ColorStop[]): ColorStop[] {
   const out: ColorStop[] = [];
-  for (const s of ordered(stops)) {
+  for (const s of ordered(stops.filter((x) => !x.disabled))) {
     if (out.length && out[out.length - 1].start_layer === s.start_layer) out[out.length - 1] = s;
     else out.push(s);
   }

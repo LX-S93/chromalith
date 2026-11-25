@@ -287,3 +287,24 @@ describe("Spoolman", () => {
     expect(back).toMatchObject({ price: 20, remaining_g: 950, td: 1.8, owned: true });
   });
 });
+
+import { calmLayers, normalized as normStops } from "../src/core";
+describe("Flächen beruhigen und ausgeblendete Filamente", () => {
+  it("entfernt feine Rillen von einer Schicht, lässt Kanten stehen", () => {
+    const w = 20, h = 20, step = 0.08, a = new Float32Array(w * h).fill(1.0);
+    for (let i = 0; i < 20; i++) a[i * w + ((i * 7) % 10)] = 1.0 - step; // Sprenkel / Zickzack links
+    for (let y = 0; y < h; y++) for (let x = 14; x < w; x++) a[y * w + x] = 0.52; // echte Kante rechts
+    calmLayers(a, w, h, step, 1);
+    for (let y = 0; y < h; y++) for (let x = 0; x < 12; x++) expect(a[y * w + x]).toBeCloseTo(1.0);
+    expect(a[5 * w + 13]).toBeCloseTo(1.0);
+    expect(a[5 * w + 14]).toBeCloseTo(0.52);
+  });
+  it("ausgeblendete Filamente zählen nicht", () => {
+    const [s, g, w] = starterLibrary();
+    const st = normStops([{ filament: s, start_layer: 1, disabled: true }, { filament: g, start_layer: 5 }, { filament: w, start_layer: 9 }]);
+    expect(st.map((x) => [x.filament.id, x.start_layer])).toEqual([[g.id, 1], [w.id, 9]]);
+    const p = parseProject(serializeProject({ name: "t", image: null, imagePng: null, settings: normalizeSettings(undefined),
+      stops: [{ filament: s, start_layer: 1 }, { filament: g, start_layer: 5, disabled: true }], islands: [] } as any));
+    expect(p.stops.map((x) => !!x.disabled)).toEqual([false, true]);
+  });
+});

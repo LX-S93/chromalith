@@ -71,11 +71,11 @@ self.onmessage = (ev: MessageEvent) => {
       result = {
         width: hm.width, height: hm.height, preview: preview.buffer,
         layerCount: layerCount(hm), minLayer: minLayer(hm), size: sizeMm(hm), maxZ: maxZ(hm),
-        mode: effectiveMode(p), usage: filamentUsage(hm, est), stackLayers: hm.restLayers ?? layerCount(hm), border: hm.border_px,
+        mode: effectiveMode(p), simStops: est, usage: filamentUsage(hm, est), stackLayers: hm.restLayers ?? layerCount(hm), border: hm.border_px,
         triangles: 2 * fullW * Math.round(fullW * hm.height / hm.width),
-        mesh: { vertices: mesh.vertices.buffer, faces: mesh.faces.buffer, colors: colors.buffer, size: sizeMm(small) },
+        mesh: { vertices: mesh.vertices.buffer, faces: mesh.faces.buffer, colors: colors.buffer, top: mesh.topIndex.buffer, size: sizeMm(small) },
       };
-      transfer = [preview.buffer, mesh.vertices.buffer, mesh.faces.buffer, colors.buffer];
+      transfer = [preview.buffer, mesh.vertices.buffer, mesh.faces.buffer, colors.buffer, mesh.topIndex.buffer];
     } else if (type === "suggest") {
       if (!image) throw new Error("Kein Bild geladen.");
       const s = previewSettings(ev.data.settings, 160);

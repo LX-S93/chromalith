@@ -1,7 +1,7 @@
 /** Filament-Bibliothek: suchen, anlegen, bearbeiten, löschen, importieren, exportieren, zum Stapel hinzufügen. */
 import { makeFilament, serializeLibrary, filamentLabel, type Filament } from "../core";
 import { saveFile } from "../platform";
-import { button, clear, h, modal, toast, confirmDialog } from "./dom";
+import { button, clear, contextMenu, h, modal, toast, confirmDialog } from "./dom";
 import { filesFromDrop, findLibraryFolders, importFiles, pickFilesBrowser, pickFolderDesktop, readFolder } from "./importer";
 import { isTauri, store } from "../platform";
 import { openSpoolman } from "./spoolman";
@@ -68,6 +68,16 @@ export function openLibrary(host: LibraryHost, select = false): Promise<Filament
           if (select) chosen.has(f.id) ? chosen.delete(f.id) : chosen.add(f.id);
           refresh();
         });
+        tr.addEventListener("contextmenu", (e) => {
+          current = f.id; refresh();
+          contextMenu(e, [
+            { label: "Bearbeiten …", icon: "edit", fn: () => edit(f) },
+            { label: f.owned ? "Als nicht vorhanden markieren" : "Als vorhanden markieren", icon: "library", fn: () => { f.owned = !f.owned; host.saveLibrary(); refresh(); } },
+            { label: "Duplizieren", icon: "plus", fn: () => { const c = makeFilament({ ...f, id: undefined, name: f.name + " (Kopie)" }); delete c.spoolman_id; host.library.splice(host.library.indexOf(f) + 1, 0, c); host.saveLibrary(); current = c.id; refresh(); } },
+            null,
+            { label: "Aus der Bibliothek löschen", icon: "trash", danger: true, fn: () => del(f) },
+          ]);
+        });
         tr.addEventListener("dblclick", () => { if (select) { chosen.add(f.id); finish(); } else edit(f); });
         tbody.append(tr);
       }
@@ -81,17 +91,17 @@ export function openLibrary(host: LibraryHost, select = false): Promise<Filament
       if (i >= 0) host.library[i] = r; else host.library.push(r);
       host.saveLibrary(); current = r.id; refresh();
     };
+    const del = async (f: Filament | undefined) => {
+      if (!f || !(await confirmDialog("Filament löschen", `„${filamentLabel(f)}“ aus der Bibliothek löschen?`, "Löschen"))) return;
+      host.library.splice(host.library.indexOf(f), 1); chosen.delete(f.id); host.saveLibrary(); refresh();
+    };
     search.addEventListener("input", refresh);
     ownedOnly.addEventListener("change", refresh);
     const tools = h("div", { style: { display: "flex", gap: "8px", alignItems: "center", marginBottom: "10px", flexWrap: "wrap" } },
       search, h("label", { class: "switch", style: { gap: "8px" } }, "Nur vorhandene", ownedOnly),
       button("Neu", () => edit(null), { icon: "plus" }),
       button("Bearbeiten", () => { const f = host.library.find((x) => x.id === current); if (f) edit(f); }, { icon: "edit" }),
-      button("Löschen", async () => {
-        const f = host.library.find((x) => x.id === current);
-        if (!f || !(await confirmDialog("Filament löschen", `„${filamentLabel(f)}“ aus der Bibliothek löschen?`, "Löschen"))) return;
-        host.library.splice(host.library.indexOf(f), 1); chosen.delete(f.id); host.saveLibrary(); refresh();
-      }, { icon: "trash" }),
+      button("Löschen", () => del(host.library.find((x) => x.id === current)), { icon: "trash" }),
       button("Importieren", () => importDialog(host).then(refresh), { icon: "upload", title: "Filamente aus Bibliotheks- oder Set-Dateien (.json/.fss) oder einem ganzen Ordner übernehmen" }),
       button("Spoolman", () => openSpoolman(host).then(refresh), { icon: "download", title: "Rollen aus Spoolman als vorhandene Filamente übernehmen (Farbe, Material, Preis, Restgewicht)" }),
       button("Exportieren", () => saveFile("filamente.json", serializeLibrary(host.library), [{ name: "JSON", extensions: ["json"] }]), { icon: "download" }));

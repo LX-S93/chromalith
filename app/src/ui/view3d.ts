@@ -15,6 +15,10 @@ export class ModelView {
   private size: [number, number] = [0, 0];
   private framed = false;
   private pending = false;
+  private baseZ: Float32Array | null = null;
+  private top: Int32Array | null = null;
+  private baseCol: Float32Array | null = null;
+  private cut: { z: number; colorOf: (z: Float32Array) => Float32Array } | null = null;
 
   constructor() {
     this.el = h("div", { class: "view" });
@@ -42,12 +46,17 @@ export class ModelView {
     return true;
   }
 
-  setMesh(m: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; size: [number, number] }) {
+  setMesh(m: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; top?: ArrayBuffer; size: [number, number] }) {
     if (!this.ensure()) return;
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(m.vertices), 3));
+    const pos = new Float32Array(m.vertices);
+    this.baseZ = new Float32Array(pos.length / 3);
+    for (let i = 0; i < this.baseZ.length; i++) this.baseZ[i] = pos[i * 3 + 2];
+    this.top = m.top ? new Int32Array(m.top) : null;
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     const col = new Float32Array(m.colors);
     for (let i = 0; i < col.length; i++) col[i] = srgbToLinear(col[i]);
+    this.baseCol = col.slice();
     geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
     geo.setIndex(new THREE.BufferAttribute(new Uint32Array(m.faces), 1));
     geo.computeVertexNormals();
@@ -60,6 +69,29 @@ export class ModelView {
     const changed = Math.abs(m.size[0] - this.size[0]) > 0.5 || Math.abs(m.size[1] - this.size[1]) > 0.5;
     this.size = m.size;
     if (changed || !this.framed) this.frame();
+    if (this.cut) this.applyCut(); else this.render();
+  }
+
+  /** Zeigt den Druck nur bis zur Höhe z (mm). colorOf liefert die simulierte Farbe (sRGB, 3/Punkt) für die
+   *  gekappten Höhen. null = ganzes Modell. */
+  setCut(cut: { z: number; colorOf: (z: Float32Array) => Float32Array } | null) {
+    this.cut = cut;
+    this.applyCut();
+  }
+
+  private applyCut() {
+    if (!this.mesh || !this.baseZ) return;
+    const geo = this.mesh.geometry, pos = geo.getAttribute("position") as THREE.BufferAttribute, col = geo.getAttribute("color") as THREE.BufferAttribute;
+    const n = this.baseZ.length, zCut = this.cut ? this.cut.z : Infinity;
+    const z = new Float32Array(n);
+    for (let i = 0; i < n; i++) { z[i] = Math.min(this.baseZ[i], zCut); pos.setZ(i, z[i]); }
+    if (this.cut && this.top) {
+      const c = this.cut.colorOf(z), a = col.array as Float32Array;
+      for (let i = 0; i < n; i++) if (this.top[i] >= 0) for (let k = 0; k < 3; k++) a[i * 3 + k] = srgbToLinear(c[i * 3 + k]);
+      col.needsUpdate = true;
+    } else if (this.baseCol) { (col.array as Float32Array).set(this.baseCol); col.needsUpdate = true; }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
     this.render();
   }
 
