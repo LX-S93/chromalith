@@ -18,10 +18,25 @@ export class ModelView {
   private baseZ: Float32Array | null = null;
   private top: Int32Array | null = null;
   private baseCol: Float32Array | null = null;
+  private meshOrig: THREE.Mesh | null = null;
+  private comparing = false;
+  private split = 0.5;
+  private divider = h("div", { class: "divider", style: { top: "0", bottom: "0", display: "none" } }, h("span", null, "⇆"));
   private cut: { z: number; colorOf: (z: Float32Array) => Float32Array } | null = null;
 
   constructor() {
-    this.el = h("div", { class: "view" });
+    this.el = h("div", { class: "view" }, this.divider);
+    let drag = false;
+    this.divider.addEventListener("pointerdown", (e) => { drag = true; this.divider.setPointerCapture(e.pointerId); e.stopPropagation(); });
+    this.divider.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const r = this.el.getBoundingClientRect();
+      this.split = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      this.placeDivider(); this.render();
+    });
+    const end = () => { drag = false; };
+    this.divider.addEventListener("pointerup", end);
+    this.divider.addEventListener("pointercancel", end);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x30323c, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(-0.6, 0.8, 1.4);
@@ -46,7 +61,7 @@ export class ModelView {
     return true;
   }
 
-  setMesh(m: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; top?: ArrayBuffer; size: [number, number] }) {
+  setMesh(m: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; orig?: ArrayBuffer; top?: ArrayBuffer; size: [number, number] }) {
     if (!this.ensure()) return;
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(m.vertices);
@@ -66,6 +81,21 @@ export class ModelView {
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.scale.z = this.zScale;
     this.scene.add(this.mesh);
+    // Zweites Netz mit den Farben des Originalbilds (gleiche Form) für den Vergleich
+    if (this.meshOrig) { this.scene.remove(this.meshOrig); this.meshOrig.geometry.dispose(); this.meshOrig = null; }
+    if (m.orig) {
+      const g2 = new THREE.BufferGeometry();
+      g2.setAttribute("position", geo.getAttribute("position"));
+      g2.setAttribute("normal", geo.getAttribute("normal"));
+      const oc = new Float32Array(m.orig);
+      for (let i = 0; i < oc.length; i++) oc[i] = srgbToLinear(oc[i]);
+      g2.setAttribute("color", new THREE.BufferAttribute(oc, 3));
+      g2.setIndex(geo.getIndex());
+      this.meshOrig = new THREE.Mesh(g2, mat);
+      this.meshOrig.scale.z = this.zScale;
+      this.meshOrig.visible = false;
+      this.scene.add(this.meshOrig);
+    }
     const changed = Math.abs(m.size[0] - this.size[0]) > 0.5 || Math.abs(m.size[1] - this.size[1]) > 0.5;
     this.size = m.size;
     if (changed || !this.framed) this.frame();
@@ -95,9 +125,21 @@ export class ModelView {
     this.render();
   }
 
-  clear() { if (this.mesh) { this.scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh = null; } this.render(); }
+  clear() {
+    if (this.mesh) { this.scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh = null; }
+    if (this.meshOrig) { this.scene.remove(this.meshOrig); this.meshOrig.geometry.dispose(); this.meshOrig = null; }
+    this.render();
+  }
 
-  setZScale(z: number) { this.zScale = z; if (this.mesh) this.mesh.scale.z = z; this.render(); }
+  setZScale(z: number) { this.zScale = z; if (this.mesh) this.mesh.scale.z = z; if (this.meshOrig) this.meshOrig.scale.z = z; this.render(); }
+
+  /** Vergleich: links vom Teiler das Relief in den Farben des Originalbilds, rechts der simulierte Druck. */
+  setCompare(on: boolean) {
+    this.comparing = on;
+    this.divider.style.display = on ? "" : "none";
+    this.placeDivider(); this.render();
+  }
+  private placeDivider() { this.divider.style.left = `${this.split * 100}%`; }
 
   frame() {
     if (!this.controls) return;
@@ -125,6 +167,15 @@ export class ModelView {
   render() {
     if (!this.renderer || this.pending) return;
     this.pending = true;
-    requestAnimationFrame(() => { this.pending = false; this.renderer!.render(this.scene, this.camera); });
+    requestAnimationFrame(() => {
+      this.pending = false;
+      const r = this.renderer!, m = this.mesh, o = this.meshOrig;
+      if (!this.comparing || !m || !o) { r.setScissorTest(false); if (o) o.visible = false; if (m) m.visible = true; r.render(this.scene, this.camera); return; }
+      const box = this.el.getBoundingClientRect(), x = Math.round(box.width * this.split);
+      r.setScissorTest(true);
+      r.setScissor(0, 0, x, box.height); o.visible = true; m.visible = false; r.render(this.scene, this.camera);
+      r.setScissor(x, 0, box.width - x, box.height); o.visible = false; m.visible = true; r.render(this.scene, this.camera);
+      r.setScissorTest(false);
+    });
   }
 }

@@ -66,6 +66,11 @@ self.onmessage = (ev: MessageEvent) => {
         const t = mesh.topIndex[v];
         if (t >= 0) colors.set(simSmall.subarray(t * 3, t * 3 + 3), v * 3);
       }
+      const orig = new Float32Array(colors.length).fill(0.55);
+      for (let v = 0; v < mesh.topIndex.length; v++) {
+        const t = mesh.topIndex[v];
+        if (t >= 0) orig.set(small.rgb.subarray(t * 3, t * 3 + 3), v * 3);
+      }
       const full = ev.data.settings as HeightSettings;
       const fullW = Math.round(full.width_mm / full.pixel_size_mm) + 1;
       result = {
@@ -73,9 +78,9 @@ self.onmessage = (ev: MessageEvent) => {
         layerCount: layerCount(hm), minLayer: minLayer(hm), size: sizeMm(hm), maxZ: maxZ(hm),
         mode: effectiveMode(p), simStops: est, usage: filamentUsage(hm, est), stackLayers: hm.restLayers ?? layerCount(hm), border: hm.border_px,
         triangles: 2 * fullW * Math.round(fullW * hm.height / hm.width),
-        mesh: { vertices: mesh.vertices.buffer, faces: mesh.faces.buffer, colors: colors.buffer, top: mesh.topIndex.buffer, size: sizeMm(small) },
+        mesh: { vertices: mesh.vertices.buffer, faces: mesh.faces.buffer, colors: colors.buffer, orig: orig.buffer, top: mesh.topIndex.buffer, size: sizeMm(small) },
       };
-      transfer = [preview.buffer, mesh.vertices.buffer, mesh.faces.buffer, colors.buffer, mesh.topIndex.buffer];
+      transfer = [preview.buffer, mesh.vertices.buffer, mesh.faces.buffer, colors.buffer, orig.buffer, mesh.topIndex.buffer];
     } else if (type === "suggest") {
       if (!image) throw new Error("Kein Bild geladen.");
       const s = previewSettings(ev.data.settings, 160);

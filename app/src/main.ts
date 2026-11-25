@@ -146,6 +146,9 @@ const left = h("aside", { class: "left" },
     (fields.shape = selectField("Umriss", SHAPES, (v) => setSetting("shape", v as any), "Rund schneidet das Bild auf den größten Kreis in der Mitte zu, z. B. für Uhren.")).el,
     sl("hole_mm", "Mittelloch Ø", 0, 20, 0.5, "mm", "Loch in der Mitte, z. B. 8 mm für die Achse eines Uhrwerks. 0 = kein Loch.", 1),
     sl("rim_mm", "Erhöhter Rand", 0, 15, 0.5, "mm", "Außenrand, der über dem Bild steht und in der obersten Farbe gedruckt wird.", 1),
+    sl("image_scale", "Motivgröße", 0.2, 2, 0.01, "×", "Verkleinert oder vergrößert nur das Motiv. Umriss und Größe des Drucks bleiben gleich, z. B. damit bei einer Uhr Platz für die Ziffern bleibt. Die freie Fläche bekommt die Randfarbe des Bildes."),
+    sl("image_x", "Motiv nach rechts", -50, 50, 0.5, "%", "Verschiebt das Motiv waagerecht innerhalb der Form.", 1),
+    sl("image_y", "Motiv nach unten", -50, 50, 0.5, "%", "Verschiebt das Motiv senkrecht innerhalb der Form.", 1),
     (fields.clock_numbers = switchField("Uhr-Ziffern 1–12", (v) => setSetting("clock_numbers", v), "Setzt die Ziffern 1 bis 12 erhaben auf das Bild.")).el,
     sl("numbers_mm", "Ziffernhöhe", 4, 40, 0.5, "mm", "Schriftgröße der Uhr-Ziffern.", 1),
     sl("raise_mm", "Rand/Ziffern über Bild", 0.08, 3, 0.08, "mm", "So weit stehen Rand und Ziffern über der höchsten Stelle des Bildes.")),
@@ -229,6 +232,16 @@ let compareOn = store.get("compare", false);
 const compareBtn = button("Vergleich", () => { compareOn = !compareOn; store.set("compare", compareOn); updateCompare(); },
   { icon: "swap", cls: "small", title: "Original und Ergebnis nebeneinander: Teiler mit der Maus verschieben" });
 viewPreview.el.append(h("div", { class: "view-tools" }, compareBtn));
+let compare3d = store.get("compare3d", false);
+const compare3dBtn = button("Vergleich", () => { compare3d = !compare3d; store.set("compare3d", compare3d); updateCompare3d(); },
+  { icon: "swap", cls: "small", title: "Links vom Teiler das Relief in den Farben des Originalbilds, rechts der simulierte Druck. Teiler mit der Maus verschieben." });
+view3d.el.append(h("div", { class: "view-tools", style: { top: "44px" } }, compare3dBtn));
+function updateCompare3d() {
+  compare3dBtn.classList.toggle("on", compare3d);
+  compare3dBtn.textContent = ""; compare3dBtn.append(icon("swap"), compare3d ? "Vergleich: links Original, rechts Druck" : "Vergleich");
+  view3d.setCompare(compare3d);
+}
+updateCompare3d();
 function updateCompare() {
   compareBtn.classList.toggle("on", compareOn);
   compareBtn.textContent = ""; compareBtn.append(icon("swap"), compareOn ? "Vergleich: links Original, rechts Ergebnis" : "Vergleich");
@@ -243,7 +256,11 @@ function updateCompare() {
   let sx = 0, sy = 0, sw = img.width, sh = img.height;
   if (state.settings.shape === "circle" && sw !== sh) { const side = Math.min(sw, sh); sx = Math.floor((sw - side) / 2); sy = Math.floor((sh - side) / 2); sw = sh = side; }
   g.imageSmoothingQuality = "high";
-  g.drawImage(src, sx, sy, sw, sh, r.border, r.border, r.width - 2 * r.border, r.height - 2 * r.border);
+  const iw = r.width - 2 * r.border, ih = r.height - 2 * r.border, sc = state.settings.image_scale ?? 1;
+  const dw = iw * sc, dh = ih * sc;
+  g.save(); g.beginPath(); g.rect(r.border, r.border, iw, ih); g.clip();
+  g.drawImage(src, sx, sy, sw, sh, r.border + (iw - dw) / 2 + ((state.settings.image_x ?? 0) / 100) * iw, r.border + (ih - dh) / 2 + ((state.settings.image_y ?? 0) / 100) * ih, dw, dh);
+  g.restore();
   viewPreview.setCompare(c);
 }
 

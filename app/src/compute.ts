@@ -29,7 +29,7 @@ export interface PreviewResult {
   triangles: number;
   stackLayers: number;
   simStops: ColorStop[];
-  mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; top: ArrayBuffer; size: [number, number] };
+  mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; orig: ArrayBuffer; top: ArrayBuffer; size: [number, number] };
 }
 
 let islandState: unknown[] = [];

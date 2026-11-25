@@ -46,6 +46,10 @@ export interface HeightSettings {
   raise_mm: number;
   clock_numbers: boolean;
   numbers_mm: number;
+  /** Motiv innerhalb der Form: Größe (1 = füllt die Form) und Versatz in % der Breite/Höhe. */
+  image_scale: number;
+  image_x: number;
+  image_y: number;
 }
 
 export const DEFAULT_SETTINGS: HeightSettings = {
@@ -53,7 +57,7 @@ export const DEFAULT_SETTINGS: HeightSettings = {
   base_layer_mm: 0.2, layer_height_mm: 0.08, luma_method: "rec709", linearize: false,
   height_mode: "auto", brightness: 0, contrast: 1, gamma: 1, smoothing_px: 0, detail_mm: 0,
   border_mm: 0, border_height_mm: 0, shape: "rect", hole_mm: 0, rim_mm: 0, raise_mm: 0.6,
-  clock_numbers: false, numbers_mm: 12,
+  clock_numbers: false, numbers_mm: 12, image_scale: 1, image_x: 0, image_y: 0,
 };
 
 export function normalizeSettings(d: Partial<HeightSettings> | undefined): HeightSettings {
@@ -107,6 +111,31 @@ export function minLayer(hm: HeightMap): number {
   return layerIndex(m === Infinity ? 0 : m, hm.base_layer_mm, hm.layer_height_mm);
 }
 
+/** Motiv innerhalb des Rasters verkleinern/vergrößern und verschieben. Die Fläche außerhalb des Motivs wird
+ *  mit der Randfarbe des Bildes gefüllt, damit ein einfarbiger Hintergrund nahtlos weiterläuft. */
+function placeImage(w: number, h: number, rgb: Float32Array, alpha: Float32Array, sc: number, ox: number, oy: number) {
+  const fill = [0, 0, 0]; let fn = 0;
+  const edge = (i: number) => { if (alpha[i] >= 0.5) { fill[0] += rgb[i * 3]; fill[1] += rgb[i * 3 + 1]; fill[2] += rgb[i * 3 + 2]; fn++; } };
+  for (let x = 0; x < w; x++) { edge(x); edge((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { edge(y * w); edge(y * w + w - 1); }
+  const out = new Float32Array(w * h * 3), oa = new Float32Array(w * h);
+  const cx = (w - 1) / 2, cy = (h - 1) / 2;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const sx = (x - cx - ox) / sc + cx, sy = (y - cy - oy) / sc + cy, o = y * w + x;
+      if (sx < 0 || sy < 0 || sx > w - 1 || sy > h - 1) {
+        if (fn) { out[o * 3] = fill[0] / fn; out[o * 3 + 1] = fill[1] / fn; out[o * 3 + 2] = fill[2] / fn; oa[o] = 1; }
+        continue;
+      }
+      const x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = sx - x0, fy = sy - y0;
+      const i00 = y0 * w + x0, i10 = y0 * w + x1, i01 = y1 * w + x0, i11 = y1 * w + x1;
+      const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
+      for (let c = 0; c < 3; c++) out[o * 3 + c] = rgb[i00 * 3 + c] * w00 + rgb[i10 * 3 + c] * w10 + rgb[i01 * 3 + c] * w01 + rgb[i11 * 3 + c] * w11;
+      oa[o] = alpha[i00] * w00 + alpha[i10] * w10 + alpha[i01] * w01 + alpha[i11] * w11;
+    }
+  return { w, h, rgb: out, alpha: oa };
+}
+
 /** Bild auf Modellraster bringen. Rückgabe: RGB (3/Punkt) und Alpha. */
 export function prepareImage(img: Raster, s: HeightSettings): { w: number; h: number; rgb: Float32Array; alpha: Float32Array } {
   let src = img;
@@ -122,6 +151,8 @@ export function prepareImage(img: Raster, s: HeightSettings): { w: number; h: nu
     rgb[i * 3] = r.data[i * 4]; rgb[i * 3 + 1] = r.data[i * 4 + 1]; rgb[i * 3 + 2] = r.data[i * 4 + 2];
     alpha[i] = r.data[i * 4 + 3];
   }
+  const sc = s.image_scale ?? 1, ox = ((s.image_x ?? 0) / 100) * w, oy = ((s.image_y ?? 0) / 100) * h;
+  if (Math.abs(sc - 1) > 1e-3 || Math.abs(ox) > 1e-3 || Math.abs(oy) > 1e-3) return placeImage(w, h, rgb, alpha, Math.max(0.05, sc), ox, oy);
   return { w, h, rgb, alpha };
 }
 

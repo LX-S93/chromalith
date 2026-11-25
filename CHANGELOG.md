@@ -2,6 +2,15 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.13.0 – 2026-11-25
+
+- **Vergleichs-Teiler in der 3D-Ansicht**: Knopf „Vergleich“ oben links in der 3D-Ansicht. Links vom Teiler
+  steht das Relief in den Farben des Originalbilds, rechts der simulierte Druck. Der Teiler lässt sich mit der
+  Maus ziehen, das Modell dabei weiter drehen. Der Schicht-Regler bleibt.
+- **Motiv skalieren und verschieben** (Abschnitt „Form“): „Motivgröße“, „Motiv nach rechts“ und „Motiv nach
+  unten“ ändern nur das Motiv. Umriss und Größe des Drucks bleiben gleich, z. B. damit bei einer Uhr Platz für
+  Ziffern und Rand bleibt. Die freie Fläche bekommt die Randfarbe des Bildes und bleibt flach.
+
 ## 0.12.0 – 2026-11-25
 
 - **Schicht-Regler in der 3D-Ansicht**: zeigt den Druck nur bis Schicht X, in den Farben, die er in diesem

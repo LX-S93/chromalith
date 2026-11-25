@@ -308,3 +308,20 @@ describe("Flächen beruhigen und ausgeblendete Filamente", () => {
     expect(p.stops.map((x) => !!x.disabled)).toEqual([false, true]);
   });
 });
+
+describe("Motiv skalieren", () => {
+  it("verkleinert das Motiv, Raster und Umriss bleiben", () => {
+    const img = gradient(64, 64);
+    const s0 = { ...normalizeSettings(undefined), width_mm: 20, pixel_size_mm: 0.5 };
+    const a = buildHeightmap(img, s0, { mode: "bright_high" });
+    const b = buildHeightmap(img, { ...s0, image_scale: 0.5, image_x: 10 }, { mode: "bright_high" });
+    expect([b.width, b.height]).toEqual([a.width, a.height]);
+    const w = b.width, mid = Math.floor(b.height / 2) * w;
+    // Außerhalb des Motivs: einheitliche Randfarbe -> gleiche Höhe links außen und in der Ecke
+    expect(b.heights[mid + 1]).toBeCloseTo(b.heights[2 * w + 2]);
+    // Im Motiv steigt der Verlauf doppelt so schnell an wie vorher
+    const c = Math.floor(w / 2) + Math.round(0.1 * w);
+    expect(b.heights[mid + c + 6] - b.heights[mid + c - 6]).toBeGreaterThan((a.heights[mid + Math.floor(w / 2) + 6] - a.heights[mid + Math.floor(w / 2) - 6]) * 1.5);
+    expect(normalizeSettings({ width_mm: 50 } as any).image_scale).toBe(1);
+  });
+});
