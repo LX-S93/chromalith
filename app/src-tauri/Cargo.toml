@@ -1,6 +1,6 @@
 [package]
 name = "chromalith"
-version = "0.24.1"
+version = "0.25.0"
 description = "Chromalith – colour reliefs and lithophanes from filament layers"
 license = "MIT"
 edition = "2021"

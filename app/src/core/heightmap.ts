@@ -1,6 +1,6 @@
 /** Bild -> Höhenkarte (mm), auf Druckschichten quantisiert, mit Form (rund, Loch, Rand, Ziffern). */
 import { SRGB_TO_LINEAR_8, srgbToLab } from "./color";
-import { crop, gaussianBlur, medianFilter, minFeature, resize, type Raster } from "./raster";
+import { crop, gaussianBlur, medianFilter, minFeature, removeSeams, resize, type Raster } from "./raster";
 
 export const LUMA_METHODS = {
   rec709: "Wahrnehmung (Rec. 709)",
@@ -364,13 +364,12 @@ export function buildHeightmap(img: Raster, s: HeightSettings, opt: BuildOptions
       const bl = gaussianBlur(ch, w, h, s.smoothing_px);
       for (let i = 0; i < n; i++) src[i * 3 + c] = adjustTone(bl[i], s);
     }
-    // Median: an Farbkanten treffen Mischpunkte oft eine ganz andere Höhe; solche 1-Punkt-Säume müssen weg
-    heights = medianFilter(opt.colorFn(src, w, h), w, h, detailKernel(s));
+    // an Farbkanten treffen Mischpunkte oft eine ganz andere Höhe: solche Säume entfernen, feine Linien behalten
+    heights = opt.colorFn(src, w, h);
+    if (s.detail_mm > 0) heights = removeSeams(heights, w, h, s.layer_height_mm * 1.5);
   } else {
     let lum = luminance(rgb, s.luma_method, s.linearize);
-    // kein Median: feine Linien (Haare, Konturen) sollen bleiben; minFeature macht sie unten druckbar
-    // Grundglättung in halber Mindestbreite: feine Linien werden zu flachen, runden Rippen statt zu hohen Wänden
-    lum = gaussianBlur(lum, w, h, Math.hypot(s.smoothing_px, s.detail_mm > 0 ? (0.5 * s.detail_mm) / s.pixel_size_mm : 0));
+    lum = gaussianBlur(lum, w, h, s.smoothing_px);
     heights = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const t = adjustTone(lum[i], s);

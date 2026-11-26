@@ -2,7 +2,7 @@
 /** Rechen-Worker: hält das Bild und rechnet Höhenkarte, Vorschau, Analyse und Export,
  *  ohne die Oberfläche zu blockieren. */
 import {
-  autoDistribute, buildProject, write3mf, effectiveStops, type Island, colorError, labSample, prepareImage, suggestFilaments, type Filament, downsample, effectiveMode, filamentUsage, heightmapToMesh, imagePalette, layerCount,
+  autoDistribute, buildProject, write3mf, effectiveStops, type Island, colorError, labSample, prepareImage, suggestStack, type SuggestMode, type Filament, downsample, effectiveMode, filamentUsage, heightmapToMesh, imagePalette, layerCount,
   lithoMesh, lithoThickness, lithoSimulate, meshVolume, type LithoLight,
   maxZ, minLayer, planJson, planReport, simulate, sizeMm, writeStl, type ColorStop, type DigitRenderer,
   type HeightSettings, type Project, type Raster,
@@ -119,14 +119,14 @@ self.onmessage = (ev: MessageEvent) => {
       const { w, h, rgb, alpha } = prepareImage(image, s);
       const lab = labSample(rgb, w, h, 72, alpha);
       let last = 0;
-      const r = suggestFilaments(lab, rgb, ev.data.library as Filament[], {
+      const r = suggestStack(lab, rgb, ev.data.library as Filament[], {
         count: ev.data.count, base: s.base_layer_mm, step: s.layer_height_mm, minH: s.min_height_mm, maxH: s.max_height_mm,
         onProgress: (f) => { if (f - last > 0.02) { last = f; (self as any).postMessage({ id, progress: f }); } },
-      });
+      }, (ev.data.mode ?? "auto") as SuggestMode);
       if (!r) throw new Error("Zu wenige Filamente für einen Vorschlag.");
       const cur = ev.data.stops as ColorStop[];
       const currentError = cur.length ? colorError(lab, cur, s.base_layer_mm, s.layer_height_mm, s.min_height_mm, s.max_height_mm) : null;
-      result = { stops: r.stops, error: r.error, currentError };
+      result = { stops: r.stops, error: r.error, currentError, order: r.order, bestError: r.bestError };
     } else if (type === "auto") {
       const s = previewSettings(ev.data.settings, 600);
       result = { stops: autoDistribute(project(s, ev.data.stops), s, renderDigits) };

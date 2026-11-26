@@ -45,8 +45,8 @@ export const exportAll = (settings: HeightSettings, stops: ColorStop[], name: st
   call<{ stl: ArrayBuffer; threemf: ArrayBuffer; report: string; json: string; preview: ArrayBuffer; width: number; height: number }>({ type: "export", settings, stops, name });
 export const previewImage = (settings: HeightSettings, stops: ColorStop[], maxSide = 520) =>
   call<{ width: number; height: number; preview: ArrayBuffer }>({ type: "preview", settings, stops, maxSide, lite: true });
-export const suggest = (settings: HeightSettings, stops: ColorStop[], library: ColorStop["filament"][], count: number, progress?: (f: number) => void) =>
-  call<{ stops: ColorStop[]; error: number; currentError: number | null }>({ type: "suggest", settings, stops, library, count }, [], progress);
+export const suggest = (settings: HeightSettings, stops: ColorStop[], library: ColorStop["filament"][], count: number, mode: string, progress?: (f: number) => void) =>
+  call<{ stops: ColorStop[]; error: number; currentError: number | null; order?: "dark_base" | "light_base" | "free"; bestError?: number }>({ type: "suggest", settings, stops, library, count, mode }, [], progress);
 
 export interface LithoResult {
   width: number; height: number; preview: ArrayBuffer; size: [number, number, number]; note: string; volume_mm3: number; triangles: number;

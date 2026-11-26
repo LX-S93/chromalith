@@ -158,28 +158,43 @@ function dropSmall(r: Float32Array, w: number, h: number, eps: number, minArea: 
   }
 }
 
-/** Druckbare Mindestbreite: Erhebungen und Rillen, die schmaler als k Punkte sind, lassen sich nicht drucken.
- *  Einzelne Spitzen und kurze Stummel werden entfernt, längere feine Linien (Haare, Konturen) bleiben erhalten
- *  und werden auf k Punkte verbreitert. `eps` ist der Höhenunterschied, ab dem etwas als Detail zählt. */
+/** Druckbare Mindestbreite: Erhebungen, die schmaler als k Punkte sind, lassen sich nicht drucken. Einzelne
+ *  Spitzen und kurze Stummel werden entfernt, längere feine Linien (Haare, Konturen) bleiben erhalten und werden
+ *  auf k Punkte verbreitert. Schmale Vertiefungen (dunkle Zweige in einer hellen Fläche) bleiben unverändert:
+ *  sie sind druckbar und tragen die feinen Details. `eps` ist der Höhenunterschied, ab dem etwas als Detail zählt. */
 export function minFeature(a: Float32Array, w: number, h: number, k: number, eps: number): Float32Array {
   if (k < 2) return a;
-  const open = (src: Float32Array, up: boolean) => minmax(minmax(src, w, h, k, !up, false), w, h, k, up, true);
-  const pass = (src: Float32Array, up: boolean): Float32Array => {
-    // up: schmale Erhebungen (Öffnen), sonst schmale Vertiefungen (Schließen)
-    const base = open(src, up);
-    const res = new Float32Array(src.length);
-    for (let i = 0; i < res.length; i++) res[i] = up ? src[i] - base[i] : base[i] - src[i];
-    dropSmall(res, w, h, eps, 6 * k);
-    // Linie in voller Höhe um k-1 Punkte nach rechts/unten verbreitern; nie über ihre eigene Höhe hinaus
-    const far = up ? -Infinity : Infinity;
-    const line = new Float32Array(src.length);
-    for (let i = 0; i < line.length; i++) line[i] = res[i] > eps ? src[i] : far;
-    const wide = minmax(line, w, h, k, up, true);
-    const out = new Float32Array(src.length);
-    for (let i = 0; i < out.length; i++)
-      out[i] = res[i] > eps ? src[i] : wide[i] === far ? base[i] : up ? Math.max(base[i], wide[i]) : Math.min(base[i], wide[i]);
-    return out;
-  };
+  const open = (src: Float32Array) => minmax(minmax(src, w, h, k, false, false), w, h, k, true, true);
+  const base = open(a);
+  const res = new Float32Array(a.length);
+  for (let i = 0; i < res.length; i++) res[i] = a[i] - base[i];
+  dropSmall(res, w, h, eps, 6 * k);
+  // Linie in voller Höhe um k-1 Punkte nach rechts/unten verbreitern; nie über ihre eigene Höhe hinaus
+  const line = new Float32Array(a.length);
+  for (let i = 0; i < line.length; i++) line[i] = res[i] > eps ? a[i] : -Infinity;
+  const wide = minmax(line, w, h, k, true, true);
+  const out = new Float32Array(a.length);
+  for (let i = 0; i < out.length; i++) out[i] = res[i] > eps ? a[i] : wide[i] === -Infinity ? base[i] : Math.max(base[i], wide[i]);
   // zum Schluss reines Öffnen: was jetzt noch schmaler als k hochsteht, ist ein Rest und nicht druckbar
-  return open(pass(pass(a, true), false), true);
+  return open(out);
+}
+
+/** Säume an Farbkanten entfernen: Ein einzelner Punkt zwischen zwei unterschiedlich hohen Flächen, der höher
+ *  oder tiefer liegt als beide, ist ein Mischpunkt der Bildkante, der zufällig eine ganz andere Höhe getroffen
+ *  hat. Er bekommt die Höhe der näheren Seite. Feine Linien in einer gleichmäßigen Fläche bleiben unberührt. */
+export function removeSeams(a: Float32Array, w: number, h: number, tol: number): Float32Array {
+  const out = a.slice();
+  const dirs = [[1, 0], [0, 1], [1, 1], [1, -1]];
+  for (let y = 1; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x, v = a[i];
+      let fix = NaN, gap = 0;
+      for (const [dx, dy] of dirs) {
+        const A = a[i - dy * w - dx], B = a[i + dy * w + dx], lo = Math.min(A, B), hi = Math.max(A, B);
+        if (hi - lo <= tol || (v >= lo - tol && v <= hi + tol)) continue;
+        if (hi - lo > gap) { gap = hi - lo; fix = v > hi ? hi : lo; }
+      }
+      if (!Number.isNaN(fix)) out[i] = fix;
+    }
+  return out;
 }

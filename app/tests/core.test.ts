@@ -477,3 +477,48 @@ describe("Motiv ragt über die Form", () => {
     expect(hm.mask![2 * w + 2]).toBe(0);
   });
 });
+
+import { removeSeams, suggestStack, calmEnough, filamentLuminance } from "../src/core";
+describe("Relief folgt dem Bild", () => {
+  it("feine dunkle Linien bleiben als tiefe, schmale Rille erhalten", () => {
+    const w = 40, h = 40, px = new Uint8Array(w * h * 4).fill(255);
+    for (let y = 5; y < 35; y++) { const o = (y * w + 20) * 4; px[o] = px[o + 1] = px[o + 2] = 0; }
+    const s = { ...DEFAULT_SETTINGS, width_mm: 7.8, pixel_size_mm: 0.2, height_mode: "bright_high" as const };
+    const hm = buildHeightmap(fromRGBA8(w, h, px), s, { mode: "bright_high" });
+    const hi = Math.max(...hm.heights), row = hm.heights.subarray(20 * w, 21 * w);
+    expect(row[20]).toBeLessThan(hi - 1); // Rille bleibt über 1 mm tief
+    expect(row[17]).toBeGreaterThan(hi - 0.1); // daneben bleibt die Fläche oben
+    expect([...row].filter((v) => v < hi - 0.5).length).toBeLessThanOrEqual(2); // und sie wird nicht breiter
+  });
+  it("entfernt Mischkanten zwischen zwei Flächen, lässt echte Linien stehen", () => {
+    const w = 9, h = 5, edge = new Float32Array(w * h), line = new Float32Array(w * h).fill(1);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) edge[y * w + x] = x < 4 ? 1 : x === 4 ? 0.4 : 2;
+    for (let y = 0; y < h; y++) line[y * w + 4] = 0.4;
+    const a = removeSeams(edge, w, h, 0.12), b = removeSeams(line, w, h, 0.12);
+    expect(a[2 * w + 4]).toBe(1); // Ausreißer an der Kante fällt auf die nähere Seite
+    expect(a[2 * w + 3]).toBe(1); expect(a[2 * w + 5]).toBe(2);
+    expect(b[2 * w + 4]).toBeCloseTo(0.4); // Rille in einer ebenen Fläche bleibt
+  });
+  it("Vorschlag „dunkel unten“ sortiert den Stapel nach Helligkeit", () => {
+    const w = 40, h = 20, rgb = new Float32Array(w * h * 3);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 3, t = y / (h - 1);
+      if (x < w / 2) { rgb[i] = 0.85 * (1 - t) + 0.1 * t; rgb[i + 1] = 0.1; rgb[i + 2] = 0.1; }
+      else { rgb[i] = 0.1; rgb[i + 1] = 0.15; rgb[i + 2] = 0.8 * (1 - t) + 0.1 * t; }
+    }
+    const lab = labSample(rgb, w, h, 40), o = { count: 4, base: 0.16, step: 0.08, minH: 0.48, maxH: 2.24 };
+    const calm = suggestStack(lab, rgb, lib0(), o, "dark_base")!;
+    expect(calm.order).toBe("dark_base");
+    const lum = calm.stops.map((s) => filamentLuminance(s.filament));
+    expect(lum).toEqual([...lum].sort((a, b) => a - b));
+    const free = suggestStack(lab, rgb, lib0(), o, "free")!;
+    expect(free.error).toBeLessThanOrEqual(calm.error + 1e-6); // freie Reihenfolge trifft die Farben mindestens so gut
+    const auto = suggestStack(lab, rgb, lib0(), o, "auto")!;
+    expect(auto.bestError).toBeCloseTo(free.error, 6);
+    expect(auto.order).toBe(calmEnough(calm.error, free.error) ? "dark_base" : free.order);
+  });
+  it("Automatik: ruhiges Relief nur, solange die Farben kaum leiden", () => {
+    expect(calmEnough(14.5, 12.2)).toBe(true);
+    expect(calmEnough(20, 12)).toBe(false);
+  });
+});

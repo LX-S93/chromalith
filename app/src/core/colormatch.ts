@@ -14,26 +14,29 @@ export function layerPalette(stops: ColorStop[], base: number, step: number, min
   return { heights, colors: simulate(hm, stops) };
 }
 
-function nearestIndex(lab: Float32Array, pal: Float32Array, out: Int32Array | null): number {
+/** Nächste Palettenfarbe je Punkt. `chroma` gewichtet die Buntheit (a, b) gegenüber der Helligkeit (L):
+ *  1 = reiner Farbabstand, kleiner = die Höhe folgt stärker der Bildhelligkeit (ruhigeres Relief).
+ *  Rückgabe: mittlerer echter Farbabstand der gewählten Farben. */
+function nearestIndex(lab: Float32Array, pal: Float32Array, out: Int32Array | null, chroma = 1): number {
   const n = lab.length / 3, k = pal.length / 3;
   let total = 0;
   for (let i = 0; i < n; i++) {
     const L = lab[i * 3], A = lab[i * 3 + 1], B = lab[i * 3 + 2];
-    let best = Infinity, bi = 0;
+    let best = Infinity, bi = 0, bd = 0;
     for (let j = 0; j < k; j++) {
       const dl = L - pal[j * 3], da = A - pal[j * 3 + 1], db = B - pal[j * 3 + 2];
-      const d = dl * dl + da * da + db * db;
-      if (d < best) { best = d; bi = j; }
+      const ab = da * da + db * db, d = dl * dl + chroma * ab;
+      if (d < best) { best = d; bi = j; bd = dl * dl + ab; }
     }
     if (out) out[i] = bi;
-    total += Math.sqrt(best);
+    total += Math.sqrt(bd);
   }
   return total / Math.max(1, n);
 }
 
-export function nearestHeights(rgb: Float32Array, heights: Float32Array, colors: Float32Array): Float32Array {
+export function nearestHeights(rgb: Float32Array, heights: Float32Array, colors: Float32Array, chroma = 1): Float32Array {
   const idx = new Int32Array(rgb.length / 3);
-  nearestIndex(labArray(rgb), labArray(colors), idx);
+  nearestIndex(labArray(rgb), labArray(colors), idx, chroma);
   return Float32Array.from(idx, (i) => heights[i]);
 }
 
@@ -107,16 +110,17 @@ export function optimizePlan(rgb: Float32Array, w: number, h: number, filaments:
   return filaments.map((fl, i) => ({ filament: fl, start_layer: starts[i] }));
 }
 
-/** Helligkeits-Modus: Wechsel-Schichten so legen, dass die simulierte Helligkeit (L*) je Höhe
- *  möglichst gut zur Bildhelligkeit an diesen Stellen passt (kleinste Quadrate, Koordinatenabstieg).
- *  Rechnet auf einem Histogramm je Schicht und ist deshalb sehr schnell. */
+/** Helligkeits-Modus: Die Höhe steht durch die Bildhelligkeit fest; die Wechsel-Schichten werden so gelegt, dass
+ *  die simulierte Farbe je Höhe möglichst gut zu den Bildfarben an diesen Stellen passt (kleinste Quadrate im
+ *  Lab-Raum, Koordinatenabstieg). Rechnet auf einem Histogramm je Schicht und ist deshalb sehr schnell. */
 export function optimizeLumaPlan(hm: HeightMap, filaments: Filament[], initial: ColorStop[], passes = 6): ColorStop[] {
   const n = filaments.length;
   if (n < 2) return initial;
   const base = hm.base_layer_mm, step = hm.layer_height_mm;
   let K = 1;
   for (let i = 0; i < hm.heights.length; i++) if (!hm.mask || hm.mask[i]) K = Math.max(K, Math.round((hm.heights[i] - base) / step) + 1);
-  const cnt = new Float64Array(K + 1), sum = new Float64Array(K + 1), sum2 = new Float64Array(K + 1);
+  // je Schicht: Anzahl und Summe der Bildfarben (L, a, b); die Summe der Quadrate ist für den Vergleich konstant
+  const cnt = new Float64Array(K + 1), sum = new Float64Array((K + 1) * 3);
   const lab = [0, 0, 0];
   const b = hm.border_px;
   for (let y = b; y < hm.height - b; y++) for (let x = b; x < hm.width - b; x++) {
@@ -124,17 +128,19 @@ export function optimizeLumaPlan(hm: HeightMap, filaments: Filament[], initial: 
     if (hm.mask && !hm.mask[i]) continue;
     const k = Math.min(K, Math.max(1, Math.round((hm.heights[i] - base) / step) + 1));
     srgbToLab(hm.rgb[i * 3], hm.rgb[i * 3 + 1], hm.rgb[i * 3 + 2], lab, 0);
-    cnt[k]++; sum[k] += lab[0]; sum2[k] += lab[0] * lab[0];
+    cnt[k]++; sum[k * 3] += lab[0]; sum[k * 3 + 1] += lab[1]; sum[k * 3 + 2] += lab[2];
   }
   const heights = new Float32Array(K).map((_, i) => layerTopZ(i + 1, base, step));
   const row: HeightMap = { width: K, height: 1, heights, pixel_size_mm: 1, base_layer_mm: base, layer_height_mm: step,
     rgb: new Float32Array(K * 3), border_px: 0, mask: null };
-  const simL = new Float32Array(K + 1);
   const err = (st: number[]) => {
     const sim = simulate(row, filaments.map((f, i) => ({ filament: f, start_layer: st[i] })), heights, false);
-    for (let k = 1; k <= K; k++) { srgbToLab(sim[(k - 1) * 3], sim[(k - 1) * 3 + 1], sim[(k - 1) * 3 + 2], lab, 0); simL[k] = lab[0]; }
     let e = 0;
-    for (let k = 1; k <= K; k++) if (cnt[k]) e += cnt[k] * simL[k] * simL[k] - 2 * simL[k] * sum[k] + sum2[k];
+    for (let k = 1; k <= K; k++) {
+      if (!cnt[k]) continue;
+      srgbToLab(sim[(k - 1) * 3], sim[(k - 1) * 3 + 1], sim[(k - 1) * 3 + 2], lab, 0);
+      for (let c = 0; c < 3; c++) e += cnt[k] * lab[c] * lab[c] - 2 * lab[c] * sum[k * 3 + c];
+    }
     return e;
   };
   const byFil = new Map(initial.map((s) => [s.filament, s.start_layer]));

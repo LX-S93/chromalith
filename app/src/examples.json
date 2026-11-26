@@ -2,28 +2,28 @@
  "tiger": {
   "stops": [
    [
-    "Grau hell",
+    "Schwarz",
     1
    ],
    [
-    "Blau",
-    5
-   ],
-   [
     "Dunkelblau",
-    6
+    8
    ],
    [
-    "Schwarz",
-    13
+    "Braun",
+    9
    ],
    [
     "Orange",
-    17
+    10
    ],
    [
-    "Weiß",
-    27
+    "Hellblau",
+    20
+   ],
+   [
+    "Grau hell",
+    25
    ]
   ],
   "settings": {
@@ -33,28 +33,24 @@
  "sunset": {
   "stops": [
    [
-    "Gold",
+    "Dunkelblau",
     1
    ],
    [
-    "Rot",
-    4
-   ],
-   [
     "Violett",
-    12
-   ],
-   [
-    "Schwarz",
-    14
-   ],
-   [
-    "Blau",
-    19
+    5
    ],
    [
     "Magenta",
-    24
+    8
+   ],
+   [
+    "Orange",
+    12
+   ],
+   [
+    "Gelb",
+    20
    ]
   ],
   "settings": {
@@ -95,28 +91,28 @@
  "astronaut": {
   "stops": [
    [
-    "Beige",
+    "Schwarz",
     1
    ],
    [
     "Dunkelblau",
-    5
+    8
    ],
    [
     "Cyan",
-    13
-   ],
-   [
-    "Blau",
-    17
-   ],
-   [
-    "Schwarz",
-    18
+    9
    ],
    [
     "Orange",
+    13
+   ],
+   [
+    "Gelb",
     22
+   ],
+   [
+    "Weiß",
+    24
    ]
   ],
   "settings": {
@@ -188,28 +184,28 @@
  "hummingbird": {
   "stops": [
    [
-    "Gelb",
+    "Dunkelblau",
     1
    ],
    [
-    "Dunkelblau",
+    "Magenta",
     4
    ],
    [
-    "Cyan",
+    "Grau dunkel",
     9
    ],
    [
-    "Schwarz",
+    "Grün",
+    10
+   ],
+   [
+    "Cyan",
     17
    ],
    [
-    "Violett",
-    22
-   ],
-   [
-    "Magenta",
-    23
+    "Gelb",
+    21
    ]
   ],
   "settings": {
@@ -219,28 +215,24 @@
  "family": {
   "stops": [
    [
-    "Rot",
+    "Dunkelblau",
     1
    ],
    [
+    "Rot",
+    3
+   ],
+   [
     "Orange",
-    5
-   ],
-   [
-    "Gelb",
-    7
-   ],
-   [
-    "Schwarz",
     14
    ],
    [
-    "Magenta",
-    21
+    "Gelb",
+    23
    ],
    [
-    "Violett",
-    24
+    "Weiß",
+    27
    ]
   ],
   "settings": {
@@ -250,28 +242,24 @@
  "stag": {
   "stops": [
    [
-    "Beige",
+    "Schwarz",
     1
    ],
    [
-    "Orange",
-    5
-   ],
-   [
-    "Dunkelblau",
-    10
-   ],
-   [
-    "Grün",
-    13
-   ],
-   [
     "Cyan",
-    19
+    4
    ],
    [
-    "Schwarz",
-    24
+    "Gold",
+    11
+   ],
+   [
+    "Gelb",
+    12
+   ],
+   [
+    "Weiß",
+    22
    ]
   ],
   "settings": {
@@ -312,27 +300,23 @@
  "hearttree": {
   "stops": [
    [
-    "Beige",
+    "Dunkelblau",
     1
    ],
    [
-    "Gelb",
-    2
+    "Rot",
+    4
    ],
    [
     "Orange",
-    3
+    8
    ],
    [
-    "Rot",
-    12
+    "Gelb",
+    19
    ],
    [
-    "Schwarz",
-    22
-   ],
-   [
-    "Dunkelblau",
+    "Weiß",
     26
    ]
   ],
@@ -343,28 +327,28 @@
  "circuit": {
   "stops": [
    [
-    "Dunkelblau",
+    "Schwarz",
     1
    ],
    [
+    "Dunkelblau",
+    4
+   ],
+   [
     "Violett",
-    2
+    6
    ],
    [
-    "Schwarz",
-    12
-   ],
-   [
-    "Blau",
-    17
-   ],
-   [
-    "Cyan",
+    "Magenta",
     18
    ],
    [
     "Grün",
-    27
+    19
+   ],
+   [
+    "Cyan",
+    22
    ]
   ],
   "settings": {
@@ -374,27 +358,27 @@
  "neoncity": {
   "stops": [
    [
-    "Magenta",
+    "Schwarz",
     1
    ],
    [
-    "Schwarz",
-    5
-   ],
-   [
     "Dunkelblau",
-    12
+    4
    ],
    [
-    "Violett",
-    14
+    "Blau",
+    6
+   ],
+   [
+    "Magenta",
+    13
    ],
    [
     "Cyan",
-    21
+    18
    ],
    [
-    "Grün",
+    "Grau hell",
     27
    ]
   ],
@@ -432,28 +416,28 @@
  "retropc": {
   "stops": [
    [
-    "Cyan",
+    "Schwarz",
     1
    ],
    [
-    "Blau",
-    5
-   ],
-   [
-    "Schwarz",
-    9
-   ],
-   [
     "Dunkelblau",
-    18
+    4
    ],
    [
     "Violett",
-    19
+    6
    ],
    [
     "Magenta",
-    24
+    15
+   ],
+   [
+    "Grau dunkel",
+    19
+   ],
+   [
+    "Cyan",
+    21
    ]
   ],
   "settings": {
@@ -463,28 +447,28 @@
  "rider": {
   "stops": [
    [
-    "Cyan",
+    "Schwarz",
     1
    ],
    [
-    "Grau dunkel",
-    5
-   ],
-   [
-    "Schwarz",
-    6
-   ],
-   [
-    "Dunkelblau",
-    14
-   ],
-   [
     "Violett",
-    16
+    4
    ],
    [
     "Magenta",
+    8
+   ],
+   [
+    "Grau dunkel",
     18
+   ],
+   [
+    "Grün",
+    19
+   ],
+   [
+    "Cyan",
+    24
    ]
   ],
   "settings": {

@@ -2,6 +2,24 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.25.0 – 2026-11-26
+
+- Fine details are kept: the smoothing introduced in 0.22 blurred thin branches, antlers and outlines. "Minimum detail" now only removes what a nozzle cannot print (thin raised needles and ridges) and leaves narrow grooves alone, so fine dark lines stay crisp.
+- Calmer reliefs: "Suggest filaments" has a new "Layout" choice. "Automatic" prefers a stack sorted from dark at the bottom to light on top, so the height follows the image brightness and dark details become grooves instead of tall thin walls. It keeps the free order when a sorted stack would match the colours clearly worse. "Best colours: free order" is the previous behaviour.
+- The built-in colour examples were recomputed with the automatic layout (11 of 16 are now sorted dark to light; their colours are slightly more muted in places).
+- True-colour mode: stray one-point seams at the border between two areas are removed without smoothing the rest of the image.
+- "Distribute automatically" in the brightness modes now also takes the image colours into account, not only the brightness.
+- 3D view: starts at the true height of the print (1×) instead of 2× exaggeration; the chosen value is remembered, a double-click on the slider returns to 1×.
+
+<!-- de
+- Feine Details bleiben erhalten: Die Glättung aus 0.22 hat dünne Äste, Geweihe und Konturen verwischt. „Mindestdetail“ entfernt jetzt nur noch, was eine Düse nicht drucken kann (dünne Spitzen und Grate), und lässt schmale Rillen stehen. Feine dunkle Linien bleiben dadurch scharf.
+- Ruhigere Reliefs: „Filamente vorschlagen“ hat die neue Auswahl „Aufbau“. „Automatisch“ bevorzugt einen Stapel von dunkel unten nach hell oben. Die Höhe folgt dann der Bildhelligkeit, und dunkle Details werden zu Rillen statt zu hohen, dünnen Wänden. Wenn ein sortierter Stapel die Farben deutlich schlechter träfe, bleibt es bei der freien Reihenfolge. „Beste Farben: freie Reihenfolge“ ist das bisherige Verhalten.
+- Die mitgelieferten Farbbeispiele sind mit dem automatischen Aufbau neu berechnet (11 von 16 liegen jetzt von dunkel nach hell; ihre Farben sind stellenweise etwas gedeckter).
+- Farbtreuer Modus: Einzelne Fehlpunkte an der Grenze zwischen zwei Flächen werden entfernt, ohne den Rest des Bildes zu glätten.
+- „Automatisch verteilen“ berücksichtigt in den Helligkeits-Modi jetzt auch die Bildfarben, nicht nur die Helligkeit.
+- 3D-Ansicht: zeigt zu Beginn die echte Höhe des Drucks (1×) statt doppelt überhöht; der gewählte Wert wird gemerkt, ein Doppelklick auf den Regler stellt 1× wieder ein.
+-->
+
 ## 0.24.1 – 2026-11-26
 
 - Removed two built-in lithophane examples ("Hands" and "Best friends").

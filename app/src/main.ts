@@ -294,10 +294,15 @@ const viewPreview = new ImageView();
 const viewOriginal = new ImageView();
 const view3d = new ModelView();
 const analysisEl = h("div", { class: "view analysis" });
-const zLabel = h("span", null, "2×");
-const zRange = h("input", { type: "range", min: 1, max: 6, step: 0.5, value: 2, style: { width: "110px" } });
-zRange.addEventListener("input", () => { zLabel.textContent = `${zRange.value}×`; view3d.setZScale(Number(zRange.value)); });
-view3d.setZScale(2);
+// 1× ist die echte Höhe des Drucks; mehr überzeichnet das Relief nur in der Ansicht
+const zStart = Math.min(6, Math.max(1, Number(store.get("zScale", 1)) || 1));
+const zLabel = h("span", null, `${zStart}×`);
+const zRange = h("input", { type: "range", min: 1, max: 6, step: 0.5, value: zStart, style: { width: "110px" },
+  title: "1× zeigt die echte Höhe des Drucks. Höhere Werte überzeichnen das Relief nur in dieser Ansicht, damit Stufen besser zu erkennen sind. Doppelklick: zurück auf 1×." });
+const setZ = () => { zLabel.textContent = `${zRange.value}×`; view3d.setZScale(Number(zRange.value)); store.set("zScale", Number(zRange.value)); };
+zRange.addEventListener("input", setZ);
+zRange.addEventListener("dblclick", () => { zRange.value = "1"; setZ(); });
+view3d.setZScale(zStart);
 // Schicht-Regler: den Druck nur bis Schicht X ansehen (wie er nach jedem Farbwechsel aussieht)
 const cutLabel = h("span", { style: { minWidth: "150px" } }, "alle Schichten");
 const cutRange = h("input", { type: "range", min: 1, max: 1, step: 1, value: 1, style: { width: "180px" },
