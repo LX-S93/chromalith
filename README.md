@@ -1,105 +1,112 @@
 # Chromalith
 
-Chromalith macht aus einem Bild ein flaches Relief, das mit wenigen Filamentfarben
-schichtweise gedruckt wird. Weil dünne Filamentschichten durchscheinen, entstehen
-beim Drucken Farbverläufe und Schattierungen. Chromalith berechnet die Höhen, zeigt
-eine Vorschau der Farbmischung und erzeugt STL-Datei und Farbwechsel-Plan.
+**Turn a picture into a multi-colour 3D print.** Chromalith converts an image into a flat relief that is
+printed layer by layer with just a few filament colours. Thin filament layers are translucent, so the
+colours blend into gradients and shading while printing. Chromalith calculates the heights, previews
+the colour mix, and exports the model together with a colour change plan. It also makes **lithophanes**
+(flat, curved, lampshade cylinder, Christmas ornament) with a realistic backlight simulation.
 
-Eigenständige Entwicklung. Ab Version 0.3 als Desktop-App (Tauri) mit Web-Oberfläche
-in TypeScript; derselbe Code läuft auch im Browser.
+Free and open source (MIT). Windows desktop app; the same code also runs in a browser.
+The interface follows your system language (English or German).
 
-## Windows-Programm
+![Colour relief preview](docs/relief.png)
 
-Download unter **Releases** (bei jeder neuen Version automatisch gebaut):
+| 3D view | Lithophane with light simulation |
+| --- | --- |
+| ![3D view](docs/relief-3d.png) | ![Lithophane](docs/lithophane.png) |
 
-- `Chromalith-<Version>-Setup.exe` – Installation mit Startmenü-Eintrag (ohne Admin-Rechte),
-- `Chromalith-windows.zip` – eine einzelne `Chromalith.exe` zum direkt Starten.
+## Download
 
-Braucht die Microsoft-WebView2-Laufzeit, die bei Windows 10/11 dabei ist.
+Get the latest version from **[Releases](https://github.com/LX-S93/chromalith/releases/latest)**:
 
-## Arbeitsablauf
+- `Chromalith-<version>-Setup.exe` – installer with a start menu entry (no admin rights needed),
+- `Chromalith-windows.zip` – a single `Chromalith.exe` to run directly.
 
-1. **Bild öffnen** (Strg+O oder Bild ins Fenster ziehen).
-2. Links **Größe und Schichten** einstellen. Die Schichthöhen müssen später im Slicer
-   genauso eingestellt sein (Standard: erste Schicht 0,16 mm, danach 0,08 mm).
-3. Rechts den **Filament-Stapel** zusammenstellen (unten = zuerst gedruckt).
-   „Hinzufügen …“ öffnet die Bibliothek, „Automatisch verteilen“ legt die Wechsel so,
-   dass jedes Filament etwa gleich viel Bildfläche prägt. Danach die Startschichten
-   von Hand feinjustieren und die Vorschau beobachten.
-4. **Exportieren** oben rechts (Strg+E) schreibt:
-   - `name.stl` – das Modell,
-   - `name_farbwechsel.txt` – bei welcher Schicht/Höhe welches Filament kommt,
-   - `name_farbwechsel.json` – dasselbe maschinenlesbar,
-   - `name_vorschau.png` – die simulierte Ansicht.
-5. Im Slicer die STL laden, Schichthöhen übernehmen und an den genannten Schichten
-   einen Farbwechsel (Pause / M600) einfügen.
+Requires the Microsoft WebView2 runtime, which is part of Windows 10/11. The installer is not code-signed,
+so Windows SmartScreen may ask for confirmation on first start ("More info" → "Run anyway").
 
-Projekte werden als `.chroma` gespeichert (Bild, Einstellungen und Stapel in einer Datei).
+**Updates:** the installed app checks for a new release on start and offers to install it
+(menu **⋯ → Check for updates …**). The download comes from this repository's releases and is verified
+by size and SHA-256 before it is started.
 
-## Form: rund, Loch, Rand, Uhr-Ziffern
+## Features
 
-Unter **Form** lässt sich das Modell rund machen, ein Mittelloch (z. B. 8 mm für ein
-Uhrwerk) und ein erhöhter Rand setzen sowie Uhr-Ziffern 1–12 aufsetzen. Rand und Ziffern
-stehen über dem Bild und werden deshalb in der obersten Farbe gedruckt.
+- Image → height map with four height modes (auto, bright high, dark high, true colour)
+- Filament stack with live preview of the colour blending, based on each filament's **TD**
+- Automatic distribution of colour changes and **filament suggestions** from your library
+- 2D preview with before/after slider, 3D view with layer slider and flat-original-vs-relief comparison
+- Shapes: rectangle, circle, centre hole, raised rim, clock numerals; scale and move the motif inside the shape
+- Colour islands: recolour selected areas
+- Export: STL, 3MF with embedded colour changes (Bambu Studio / OrcaSlicer), colour change list (text and JSON),
+  preview image and a step-by-step **print assistant** page for your phone
+- Consumption, weight and cost per filament
+- Filament library with import, plus optional read-only sync with [Spoolman](https://github.com/Donkie/Spoolman)
+- **Lithophanes:** flat, curved, cylinder (lampshade) and sphere (ornament with hanging loop), light simulation
+  with different lamps, STL export
 
-## Beispiele
+## Workflow
 
-In `python/examples/` liegen zwei eigene Testmotive; die fertigen `.chroma`-Projekte lassen
-sich in der neuen Version direkt öffnen.
+1. **Open image** (Ctrl+O or drop an image into the window).
+2. Set **size and layers** on the left. The layer heights must later be set identically in the slicer.
+3. Build the **filament stack** on the right (bottom = printed first). "Add" opens the library,
+   "Distribute automatically" places the changes, "Suggest filaments" picks matching colours.
+   Then fine-tune the start layers and watch the preview.
+4. **Export** (Ctrl+E) writes the model, the colour change plan, a preview and the print assistant.
+5. In Bambu Studio / OrcaSlicer open the `.3mf`: the colour changes are already in the layer slider.
+   In other slicers load the STL and insert a colour change (pause / M600) at the listed layers.
 
-## Filamente und TD
+Projects are saved as `.chroma` (image, settings and stack in one file).
 
-Jedes Filament hat eine Farbe und eine **TD** (Transmissions-Distanz, in mm): die Dicke,
-ab der es praktisch kein Licht mehr durchlässt. Kleine TD = deckt schnell (z. B. Schwarz),
-große TD = scheint lange durch (z. B. Weiß, Gelb).
+## Filaments and TD
 
-- Mitgeliefert ist eine kleine Startbibliothek mit **groben Schätzwerten**.
-  Für gute Ergebnisse die TD der eigenen Filamente eintragen.
-- **⋯ → Filament-Bibliothek → Importieren** liest eigene Chromalith-Dateien
-  sowie Bibliotheks- und Set-Dateien im verbreiteten JSON-Schema
-  (`Brand / Name / Type / Color / Transmissivity`, auch `.fss`).
-- Die persönliche Bibliothek speichert das Programm selbst. Die Bibliothek der alten
-  Python-Version wird beim ersten Start automatisch übernommen.
+Each filament has a colour and a **TD** (transmission distance, in mm): the thickness at which it lets
+practically no light through. Small TD = covers quickly (e.g. black), large TD = stays translucent
+(e.g. white, yellow).
 
-Farbmodell der Vorschau: Die Schichten werden von unten nach oben übereinandergelegt;
-eine Lage der Dicke *t* deckt zu `1 − exp(−ln(20)·t/TD)` (bei *t* = TD also 95 %).
-Das ist eine Näherung – echte Drucke weichen je nach Licht und Filament ab.
+- A small starter library with **rough estimates** is included. For good results enter the TD of your own filaments.
+- **⋯ → Filament library → Import** reads Chromalith files as well as library and set files in the common
+  JSON schema (`Brand / Name / Type / Color / Transmissivity`).
 
-## Für Entwickler
+Preview colour model: layers are stacked bottom to top; a layer of thickness *t* covers
+`1 − exp(−ln(20)·t/TD)` (95 % at *t* = TD). This is an approximation – real prints differ depending on
+light and filament.
 
-Voraussetzungen: Node.js 22, für die Desktop-App zusätzlich Rust (rustup).
+## Support
+
+Chromalith is free. If it is useful to you and you would like to say thanks:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-lxs93-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/lxs93)
+
+Bug reports and ideas are welcome as [issues](https://github.com/LX-S93/chromalith/issues).
+
+## For developers
+
+Requirements: Node.js 22, plus Rust (rustup) for the desktop app.
 
 ```
 cd app
 npm install
-npm run dev          # Oberfläche im Browser: http://localhost:1420
-npm test             # Tests des Rechenkerns (vitest)
-npm run build        # statische Web-Version nach app/dist/
-npx tauri dev        # Desktop-App im Entwicklungsmodus
-npx tauri build      # Windows-Installer + Exe
+npm run dev          # UI in the browser: http://localhost:1420
+npm test             # tests of the core (vitest)
+npm run build        # static web version in app/dist/
+npx tauri dev        # desktop app in development mode
+npx tauri build      # Windows installer + exe
 ```
 
-Aufbau:
+Layout:
 
-- `app/src/core/` – Rechenkern ohne Oberfläche (TypeScript, keine Abhängigkeiten):
-  `heightmap.ts` (Bild → Höhen, Form/Uhr), `mesh.ts` (wasserdichtes Netz, STL),
-  `filaments.ts` (Bibliothek, Import), `plan.ts` (Farbwechsel, Simulation),
-  `colormatch.ts` (farbtreuer Modus), `analysis.ts`, `project.ts` (`.chroma`)
-- `app/src/worker.ts` – rechnet im Hintergrund, die Oberfläche bleibt flüssig
-- `app/src/ui/`, `app/src/main.ts` – Oberfläche, `app/src/platform.ts` – Dateien (Desktop/Browser)
-- `app/src-tauri/` – Desktop-Hülle (Rust/Tauri)
-- `python/` – bisherige Python/Qt-Version (bis 0.2.0), nur noch als Referenz
+- `app/src/core/` – core without UI (TypeScript, no dependencies): height map, mesh/STL, 3MF, filaments,
+  colour change plan and simulation, colour matching, lithophanes, `.chroma` projects
+- `app/src/worker.ts` – computes in the background so the UI stays responsive
+- `app/src/ui/`, `app/src/main.ts` – user interface; `app/src/platform.ts` – files (desktop/browser)
+- `app/src/i18n.ts`, `app/src/i18n-en.ts` – the UI source strings are German; English is translated at display time
+- `app/src/update.ts`, `app/src-tauri/` – updater and desktop shell (Rust/Tauri)
+- `python/` – the earlier Python/Qt version (up to 0.2.0), reference only
 
-## Auf der eigenen Webseite
+Releases: bump the version in `app/package.json`, `app/src-tauri/tauri.conf.json` and
+`app/src-tauri/Cargo.toml`, add a `CHANGELOG.md` entry and push to `main`; GitHub Actions builds and
+publishes the release.
 
-`npm run build` erzeugt in `app/dist/` eine statische Seite (HTML, JS, CSS) ohne Server-Teil.
-Den Ordner auf den Webspace kopieren und verlinken oder per `<iframe>` einbinden. Dateien
-werden dort als Download gespeichert, die Bibliothek im Browser des Besuchers.
+## License
 
-## Geplant
-
-- 3MF-Export mit eingebetteten Farbwechseln (Bambu Studio / Orca / PrusaSlicer)
-- Gegenlicht-Vorschau (Lithophane)
-- Farbbereiche gezielt einfärben („Color Pop“ / geteilte Modelle)
-- Automatische Filament-Vorschläge aus der Bibliothek
-- Formen/Masken für den Umriss, Hängeöse
+[MIT](LICENSE) © LX-S93. Chromalith is an independent development.

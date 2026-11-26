@@ -1,4 +1,5 @@
 /** Spoolman-Anbindung: Adresse einstellen, Rollen abrufen und mit der Bibliothek abgleichen (nur lesend). */
+import { lang } from "../i18n";
 import { spoolmanBase, spoolmanUrl, syncSpoolman, type Filament, type SpoolmanSync } from "../core";
 import { fetchJson, isTauri, store } from "../platform";
 import { button, h, modal, toast } from "./dom";
@@ -37,7 +38,7 @@ export function openSpoolman(host: SpoolmanHost): Promise<void> {
     auto.addEventListener("change", () => store.set("spoolmanAuto", auto.checked));
     const status = h("div", { class: "hint", style: { minHeight: "38px", marginTop: "12px", lineHeight: "1.5" } });
     const last = store.get<any>("spoolmanLast", null);
-    if (last && spoolmanAddress()) status.textContent = `Letzter Abgleich ${new Date(last.time).toLocaleString("de-DE")}: ${syncSummary(last)}`;
+    if (last && spoolmanAddress()) status.textContent = `Letzter Abgleich ${new Date(last.time).toLocaleString(lang === "de" ? "de-DE" : "en-GB")}: ${syncSummary(last)}`;
     const run = async () => {
       const base = spoolmanBase(url.value);
       if (!base) { toast("Bitte die Adresse von Spoolman eingeben.", "err"); return; }

@@ -3,6 +3,25 @@
 import { filamentLabel, layerTopZ, type Filament } from "../core";
 import { saveFile } from "../platform";
 import { button, h } from "./dom";
+import { fileSuffix, lang, tr } from "../i18n";
+
+/** Texte der eigenständigen Seite ({0}, {1} … sind Platzhalter). */
+const TEXT = {
+  de: {
+    dec: ",", title: "Druck-Assistent", sum: "{0} Schichten · {1} mm hoch · {2} Farbwechsel", done: "Fertig", step: "Schritt {0} von {1}",
+    allDone: "Alle Wechsel erledigt", loadStart: "Zum Start einlegen", loadNow: "Jetzt einlegen", finishing: "Druck läuft zu Ende",
+    lastUntil: "Letzte Farbe bis Schicht {0}", layer1: "Schicht 1", printsIncl: "druckt bis einschließlich Schicht {0}", before: "vor Schicht {0}",
+    atZ: "bei Z {0} mm · druckt bis Schicht {1}", back: "Zurück", restart: "Von vorn", ok: "Erledigt", okNext: "Erledigt, weiter", startL1: "Start, Schicht 1",
+    info: "Erste Schicht {0} mm, danach {1} mm. Der Wechsel kommt jeweils, bevor die genannte Schicht gedruckt wird (Pause bzw. M600 im Slicer).",
+  },
+  en: {
+    dec: ".", title: "Print assistant", sum: "{0} layers · {1} mm high · {2} colour changes", done: "Done", step: "Step {0} of {1}",
+    allDone: "All changes done", loadStart: "Load for the start", loadNow: "Load now", finishing: "Print is finishing",
+    lastUntil: "Last colour up to layer {0}", layer1: "Layer 1", printsIncl: "prints up to and including layer {0}", before: "before layer {0}",
+    atZ: "at Z {0} mm · prints up to layer {1}", back: "Back", restart: "Start over", ok: "Done", okNext: "Done, next", startL1: "Start, layer 1",
+    info: "First layer {0} mm, then {1} mm. Each change comes before the stated layer is printed (pause or M600 in the slicer).",
+  },
+};
 
 export interface AssistData {
   name: string; base: number; step: number; layers: number; maxZ: number;
@@ -13,13 +32,13 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 export function assistantHtml(d: AssistData): string {
   const steps = d.usage.map((u, i) => ({
-    color: u.filament.color, name: filamentLabel(u.filament), material: u.filament.material,
+    color: u.filament.color, name: tr(filamentLabel(u.filament)), material: u.filament.material,
     layer: u.first, last: u.last, z: i === 0 ? 0 : layerTopZ(u.first - 1, d.base, d.step),
   }));
   const data = JSON.stringify({ name: d.name, base: d.base, step: d.step, layers: d.layers, maxZ: d.maxZ, steps }).replace(/</g, "\\u003c");
   return `<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Druck-Assistent – ${esc(d.name)}</title>
+<html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${TEXT[lang].title} – ${esc(d.name)}</title>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
 body{margin:0;background:#0b0c10;color:#e7e9ee;font:16px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;flex-direction:column}
@@ -44,22 +63,22 @@ li i{width:24px;height:24px;border-radius:50%;border:1px solid #ffffff33}li smal
 </style></head><body>
 <header><b id="t"></b><span id="s"></span></header>
 <main><section class="now"><div class="count" id="c"></div><div class="sw" id="sw"></div><div class="act" id="a"></div><div class="fil" id="f"></div><div class="when" id="w"></div>
-<div class="btns"><button id="prev">Zurück</button><button class="p" id="next">Erledigt, weiter</button></div></section>
+<div class="btns"><button id="prev"></button><button class="p" id="next"></button></div></section>
 <ol id="l"></ol></main>
 <div class="info" id="i"></div>
 <script>
-const D=${data};const key="chromalith-assistent-"+D.name+"-"+D.steps.length;let cur=+(localStorage.getItem(key)||0);if(!(cur>=0&&cur<=D.steps.length))cur=0;
-const $=id=>document.getElementById(id),f2=v=>v.toFixed(2).replace(".",",");
+const D=${data},T=${JSON.stringify(TEXT[lang])};const key="chromalith-assistent-"+D.name+"-"+D.steps.length;let cur=+(localStorage.getItem(key)||0);if(!(cur>=0&&cur<=D.steps.length))cur=0;
+const $=id=>document.getElementById(id),f2=v=>v.toFixed(2).replace(".",T.dec),t=(k,...a)=>T[k].replace(/\\{(\\d)\\}/g,(m,i)=>a[i]);
 function draw(){const n=D.steps.length,done=cur>=n,s=D.steps[Math.min(cur,n-1)];
-$("t").textContent="Druck-Assistent · "+D.name;$("s").textContent=D.layers+" Schichten · "+f2(D.maxZ)+" mm hoch · "+(n-1)+" Farbwechsel";
-$("c").textContent=done?"Fertig":"Schritt "+(cur+1)+" von "+n;$("sw").style.background=s.color;
-$("a").textContent=done?"Alle Wechsel erledigt":cur===0?"Zum Start einlegen":"Jetzt einlegen";$("f").textContent=done?"Druck läuft zu Ende":s.name;
-$("w").innerHTML=done?"<small>Letzte Farbe bis Schicht "+s.last+"</small>":cur===0?"Schicht 1<small>druckt bis einschließlich Schicht "+s.last+"</small>":"vor Schicht "+s.layer+"<small>bei Z "+f2(s.z)+" mm · druckt bis Schicht "+s.last+"</small>";
-$("prev").disabled=cur===0;$("next").textContent=done?"Von vorn":cur===n-1?"Erledigt":"Erledigt, weiter";
+$("t").textContent=T.title+" · "+D.name;$("s").textContent=t("sum",D.layers,f2(D.maxZ),n-1);
+$("c").textContent=done?T.done:t("step",cur+1,n);$("sw").style.background=s.color;
+$("a").textContent=done?T.allDone:cur===0?T.loadStart:T.loadNow;$("f").textContent=done?T.finishing:s.name;
+$("w").innerHTML=done?"<small>"+t("lastUntil",s.last)+"</small>":cur===0?T.layer1+"<small>"+t("printsIncl",s.last)+"</small>":t("before",s.layer)+"<small>"+t("atZ",f2(s.z),s.last)+"</small>";
+$("prev").textContent=T.back;$("prev").disabled=cur===0;$("next").textContent=done?T.restart:cur===n-1?T.ok:T.okNext;
 $("l").innerHTML="";D.steps.forEach((x,k)=>{const li=document.createElement("li");li.className=k<cur?"done":k===cur?"cur":"";
-li.innerHTML='<i style="background:'+x.color+'"></i><div><span class="n"></span><small>'+(k===0?"Start, Schicht 1":"vor Schicht "+x.layer+" · Z "+f2(x.z)+" mm")+'</small></div><small>'+x.material+'</small>';
+li.innerHTML='<i style="background:'+x.color+'"></i><div><span class="n"></span><small>'+(k===0?T.startL1:t("before",x.layer)+" · Z "+f2(x.z)+" mm")+'</small></div><small>'+x.material+'</small>';
 li.querySelector(".n").textContent=x.name;li.onclick=()=>{cur=k;save()};$("l").appendChild(li)});
-$("i").textContent="Erste Schicht "+f2(D.base)+" mm, danach "+f2(D.step)+" mm. Der Wechsel kommt jeweils, bevor die genannte Schicht gedruckt wird (Pause bzw. M600 im Slicer).";}
+$("i").textContent=t("info",f2(D.base),f2(D.step));}
 function save(){localStorage.setItem(key,cur);draw()}
 $("prev").onclick=()=>{if(cur>0)cur--;save()};$("next").onclick=()=>{cur=cur>=D.steps.length?0:cur+1;save()};
 document.addEventListener("keydown",e=>{if(e.key==="ArrowRight"||e.key===" ")$("next").click();if(e.key==="ArrowLeft")$("prev").click()});
@@ -78,7 +97,7 @@ export function openAssistant(d: AssistData) {
       h("span", { class: "hint" }, "Führt dich beim Drucken durch die Farbwechsel. Fürs Handy als Datei speichern und dort öffnen."),
       h("div", { class: "spacer" }),
       button("Vollbild", () => back.requestFullscreen?.().catch(() => {}), { cls: "ghost" }),
-      button("Fürs Handy speichern", () => saveFile(`${d.name}_druckassistent.html`, html, [{ name: "HTML", extensions: ["html"] }]), { icon: "download" }),
+      button("Fürs Handy speichern", () => saveFile(d.name + fileSuffix("_druckassistent.html"), html, [{ name: "HTML", extensions: ["html"] }]), { icon: "download" }),
       button("Schließen", close, { icon: "close" })),
     frame);
   document.addEventListener("keydown", esc2, true);

@@ -2,6 +2,19 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.16.0 – 2026-11-26
+
+- **Updates from inside the app.** Chromalith checks for a new release on start and offers to install it;
+  no more manual download. Also available under **⋯ → Check for updates …**. The installer is downloaded
+  from the project's GitHub releases and verified (size and SHA-256) before it runs; a version can be skipped
+  and the automatic check can be switched off in the update dialog.
+- **English interface.** The app follows the system language: German on a German system, English otherwise.
+  It can be switched under **⋯ → Sprache / Language …**. The installer, the print assistant page, the colour
+  change list and the exported file names follow the language too.
+- Chromalith is now open source under the MIT licence; README and project description are in English.
+- "Buy me a coffee" link in the menu and in the About dialog.
+- Spoolman: the TD extra field is recognised with any prefix (e.g. `td`, `td_mm`, `filament_td`).
+
 ## 0.15.0 – 2026-11-25
 
 - **Lithophanie: deutlich realistischere Beleuchtung in der 3D-Ansicht.**

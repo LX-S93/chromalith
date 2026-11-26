@@ -23,8 +23,8 @@ function extraNumber(v: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-const TD_KEY = /^(hueforge[_\- ]?)?td([_\- ]?(value|wert|mm))?$|transmi/i;
-/** TD aus den Zusatzfeldern eines Spoolman-Filaments (Schlüssel z. B. „td“ oder „hueforge_td“). */
+const TD_KEY = /^([a-z0-9]+[_\- ])?td([_\- ]?(value|wert|mm))?$|transmi/i;
+/** TD aus den Zusatzfeldern eines Spoolman-Filaments (Schlüssel z. B. „td“, „td_mm“ oder mit Vorsatz wie „filament_td“). */
 export function spoolmanTd(extra: unknown): number | null {
   if (!extra || typeof extra !== "object") return null;
   for (const [k, v] of Object.entries(extra)) if (TD_KEY.test(k)) { const n = extraNumber(v); if (n !== null && n <= 100) return n; }

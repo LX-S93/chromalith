@@ -255,7 +255,7 @@ describe("Spoolman", () => {
   });
   it("liest TD aus Zusatzfeldern", () => {
     expect(spoolmanTd({ td: "2.5" })).toBe(2.5);
-    expect(spoolmanTd({ hueforge_td: "\"3\"" })).toBe(3);
+    expect(spoolmanTd({ filament_td: "\"3\"" })).toBe(3);
     expect(spoolmanTd({ notiz: "\"x\"" })).toBeNull();
   });
   it("fasst Rollen je Filament zusammen", () => {
@@ -366,4 +366,24 @@ describe("Lithophanie", () => {
       expect(meshVolume(m)).toBeGreaterThan(100);
       expect(m.size[2]).toBeGreaterThan(20);
     });
+});
+
+import { compareVersions, parseRelease } from "../src/update";
+describe("Update", () => {
+  it("vergleicht Versionen", () => {
+    expect(compareVersions("0.16.0", "0.15.9")).toBeGreaterThan(0);
+    expect(compareVersions("v0.16.0", "0.16.0")).toBe(0);
+    expect(compareVersions("0.9.0", "0.10.0")).toBeLessThan(0);
+    expect(compareVersions("1.0.0", "0.99.99")).toBeGreaterThan(0);
+  });
+  it("liest das Release und nimmt nur die Installationsdatei", () => {
+    const sha = "a".repeat(64);
+    const rel = parseRelease({ tag_name: "v0.17.0", body: "Notes", assets: [
+      { name: "Chromalith-windows.zip", size: 5, browser_download_url: "x" },
+      { name: "Chromalith-0.17.0-Setup.exe", size: 123, state: "uploaded", digest: "sha256:" + sha, browser_download_url: "https://github.com/LX-S93/chromalith/releases/download/v0.17.0/Chromalith-0.17.0-Setup.exe" }] });
+    expect(rel).toMatchObject({ version: "0.17.0", size: 123, sha256: sha, notes: "Notes" });
+    expect(parseRelease({ tag_name: "v0.17.0", assets: [] })).toBeNull();
+    expect(parseRelease({ tag_name: "v0.17.0", prerelease: true, assets: [{ name: "Chromalith-0.17.0-Setup.exe", size: 1 }] })).toBeNull();
+    expect(parseRelease({ tag_name: "nightly", assets: [] })).toBeNull();
+  });
 });

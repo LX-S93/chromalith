@@ -103,3 +103,10 @@ export const store = {
   },
   set(key: string, value: unknown) { localStorage.setItem("chromalith." + key, JSON.stringify(value)); },
 };
+
+/** Öffnet eine Seite des Projekts im Browser (Spenden, GitHub). */
+const PAGES = { support: "https://buymeacoffee.com/lxs93", project: "https://github.com/LX-S93/chromalith" };
+export async function openPage(page: keyof typeof PAGES) {
+  if (isTauri()) await (await import("@tauri-apps/api/core")).invoke("open_page", { page });
+  else window.open(PAGES[page], "_blank", "noopener");
+}

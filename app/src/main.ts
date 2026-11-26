@@ -8,7 +8,7 @@ import {
 } from "./core";
 import * as compute from "./compute";
 import type { PreviewResult } from "./compute";
-import { decodeImage, isPng, isTauri, openFile, rgbaToPng, saveFile, saveSibling, store } from "./platform";
+import { decodeImage, isPng, isTauri, openFile, openPage, rgbaToPng, saveFile, saveSibling, store } from "./platform";
 import { $, button, clear, confirmDialog, h, icon, modal, toast } from "./ui/dom";
 import { section, selectField, sliderField, switchField, type Field } from "./ui/fields";
 import { editFilament, openLibrary } from "./ui/library";
@@ -20,8 +20,11 @@ import { IslandPanel } from "./ui/islands";
 import { assistantHtml, openAssistant, type AssistData } from "./ui/assistant";
 import { ImageView } from "./ui/view2d";
 import { ModelView } from "./ui/view3d";
+import { fileSuffix, lang, num, setLang, tr, trLines, watchDom } from "./i18n";
+import { autoCheckForUpdate, checkForUpdate } from "./update";
 
 const VERSION = pkg.version;
+watchDom();
 const IMAGE_EXT = ["png", "jpg", "jpeg", "bmp", "gif", "webp"];
 
 // ------------------------------------------------------------------ Zustand
@@ -119,6 +122,9 @@ menu.append(button(null, () => menu.classList.toggle("open"), { icon: "more", cl
     menuItem("Druck-Assistent (Farbwechsel) …", showAssistant, "", "layers"),
     menuItem("Filament-Bibliothek …", () => openLibrary(libHost).then(() => refreshAnalysis()), "Strg+L", "library"),
     menuItem("Spoolman verbinden …", () => openSpoolman(libHost).then(() => refreshAnalysis()), "", "download"),
+    menuItem("Nach Updates suchen …", () => checkForUpdate(VERSION, true, () => state.dirty && !!state.image), "", "download"),
+    menuItem("Sprache / Language …", chooseLanguage, "", "edit"),
+    menuItem("☕ Kaffee spendieren", () => openPage("support").catch(() => {}), "", ""),
     menuItem("Über Chromalith", about, "", "layers")));
 document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target as Node)) menu.classList.remove("open"); });
 
@@ -489,7 +495,7 @@ function redo() {
 function markDirty() { if (!state.dirty) { state.dirty = true; updateTitle(); } }
 function updateTitle() {
   const name = state.path ? state.path.split(/[\\/]/).pop() : state.name;
-  const t = `${state.dirty ? "• " : ""}${name} – Chromalith ${VERSION}`;
+  const t = `${state.dirty ? "• " : ""}${tr(name ?? "")} – Chromalith ${VERSION}`;
   document.title = t;
   if (isTauri()) import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().setTitle(t)).catch(() => {});
 }
@@ -552,7 +558,7 @@ async function exportLitho() {
   try {
     const r = await compute.lithoExport(state.settings, lithoLight(), state.name);
     const stl = new Uint8Array(r.stl);
-    const path = await saveFile(`${state.name}_lithophanie.stl`, stl, [{ name: "STL", extensions: ["stl"] }]);
+    const path = await saveFile(state.name + fileSuffix("_lithophanie.stl"), stl, [{ name: "STL", extensions: ["stl"] }]);
     if (!path) return;
     const files = [path];
     if (state.previewRgba) { const v = viewPreview.size; files.push(await saveSibling(path, "_gegenlicht.png", await rgbaToPng(state.previewRgba, v[0], v[1]))); }
@@ -652,7 +658,7 @@ function costCard() {
   if (!rows.length) { card.append(h("div", { class: "hint" }, "Erscheint, sobald ein Bild berechnet ist.")); return card; }
   const priceIn = h("input", { class: "num", type: "number", min: 0, step: 1, value: store.get("pricePerKg", 25), style: { width: "70px" } });
   priceIn.addEventListener("change", () => { store.set("pricePerKg", Math.max(0, Number(priceIn.value) || 0)); refreshAnalysis(); });
-  const f = (v: number, d = 1) => v.toFixed(d).replace(".", ",");
+  const f = num;
   const sum = rows.reduce((a, r) => ({ cm3: a.cm3 + r.cm3, g: a.g + r.g, m: a.m + r.m, cost: a.cost + r.cost }), { cm3: 0, g: 0, m: 0, cost: 0 });
   card.append(
     h("table", { class: "use-table" },
@@ -707,6 +713,7 @@ async function loadImageBytes(name: string, bytes: Uint8Array) {
   await rebuild();
   if (first) await autoDistribute();
   resetHistory();
+autoCheckForUpdate(VERSION, () => state.dirty && !!state.image);
 }
 
 async function openImage() {
@@ -800,11 +807,11 @@ async function exportAll() {
     const png = await rgbaToPng(new Uint8ClampedArray(r.preview), r.width, r.height);
     const files = [path,
       await saveSibling(path, ".3mf", new Uint8Array(r.threemf)),
-      await saveSibling(path, "_farbwechsel.txt", r.report),
-      await saveSibling(path, "_farbwechsel.json", r.json),
-      await saveSibling(path, "_vorschau.png", png)];
+      await saveSibling(path, fileSuffix("_farbwechsel.txt"), trLines(r.report)),
+      await saveSibling(path, fileSuffix("_farbwechsel.json"), r.json),
+      await saveSibling(path, fileSuffix("_vorschau.png"), png)];
     const ad = assistData();
-    if (ad) files.push(await saveSibling(path, "_druckassistent.html", assistantHtml(ad)));
+    if (ad) files.push(await saveSibling(path, fileSuffix("_druckassistent.html"), assistantHtml(ad)));
     if (step < 4) { step = 4; renderSteps(); }
     const close = modal("Export fertig", h("div", null,
       h("p", { style: { marginTop: 0 } }, "Geschrieben:"),
@@ -813,7 +820,7 @@ async function exportAll() {
       h("p", { class: "hint" }, "Bambu Studio / OrcaSlicer: die .3mf öffnen (bei Nachfrage als Projekt laden). Die Farbwechsel stehen dann schon im Schicht-Regler. " +
         `Im Prozess muss die erste Schicht ${state.settings.base_layer_mm.toFixed(2)} mm und die Schichthöhe ${state.settings.layer_height_mm.toFixed(2)} mm sein ` +
         "(die Schichthöhe ist am Objekt schon eingetragen). Für andere Slicer stehen die Wechsel in der _farbwechsel.txt."),
-      h("pre", { style: { background: "var(--bg)", padding: "10px", borderRadius: "8px", maxHeight: "260px", overflow: "auto", fontSize: "12px" } }, r.report)),
+      h("pre", { style: { background: "var(--bg)", padding: "10px", borderRadius: "8px", maxHeight: "260px", overflow: "auto", fontSize: "12px" } }, trLines(r.report))),
       [button("Druck-Assistent öffnen", () => { close(); showAssistant(); }, { icon: "layers" }), button("OK", () => close(), { cls: "primary" })]);
   } catch (e: any) { toast("Export fehlgeschlagen: " + e.message, "err"); }
   finally { if (!running) busy.classList.remove("on"); }
@@ -829,7 +836,7 @@ async function exportPreview() {
   const r = state.result;
   if (!r || !state.previewRgba) { toast("Noch keine Vorschau berechnet."); return; }
   const png = await rgbaToPng(state.previewRgba, r.width, r.height);
-  const p = await saveFile(`${state.name}_vorschau.png`, png, [{ name: "PNG", extensions: ["png"] }]);
+  const p = await saveFile(state.name + fileSuffix("_vorschau.png"), png, [{ name: "PNG", extensions: ["png"] }]);
   if (p) toast("Vorschaubild gespeichert.", "ok");
 }
 
@@ -845,13 +852,24 @@ async function loadSet() {
   } catch (e: any) { toast("Set konnte nicht geladen werden: " + e.message, "err"); }
 }
 
+function chooseLanguage() {
+  const saved = store.get<string | null>("lang", null);
+  const pick = (l: "de" | "en" | "auto", label: string, active: boolean) => button(label, async () => { if (await confirmDiscard()) setLang(l); }, { cls: active ? "primary" : "" });
+  modal("Sprache / Language", h("div", { "data-notr": true, style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
+    pick("auto", lang === "de" ? "Wie Betriebssystem" : "Follow system", saved !== "de" && saved !== "en"),
+    pick("de", "Deutsch", saved === "de"), pick("en", "English", saved === "en")), [], true);
+}
+
 function about() {
   const close = modal("Über Chromalith", h("div", { style: { lineHeight: "1.6" } },
     h("div", { style: { display: "flex", gap: "14px", alignItems: "center" } }, h("img", { src: "./icon.svg", width: 48, height: 48 }),
       h("div", null, h("b", null, `Chromalith ${VERSION}`), h("div", { class: "hint" }, "Farbige Reliefbilder aus Filament-Schichten für den 3D-Druck."))),
     h("p", null, "Eigenständige Entwicklung. Bild öffnen, Filamente stapeln, Wechsel-Schichten festlegen und als STL mit Farbwechsel-Liste exportieren."),
-    h("p", { class: "hint" }, "Tastenkürzel: Strg+O Bild · Strg+Umschalt+O Projekt · Strg+S Speichern · Strg+E Export · Strg+L Bibliothek · Strg+N Neu")),
-    [button("Schließen", () => close(), { cls: "primary" })], true);
+    h("p", { class: "hint" }, "Tastenkürzel: Strg+O Bild · Strg+Umschalt+O Projekt · Strg+S Speichern · Strg+E Export · Strg+L Bibliothek · Strg+N Neu"),
+    h("p", { class: "hint" }, "Chromalith ist kostenlos und quelloffen (MIT-Lizenz). Wenn es dir gefällt, freue ich mich über einen Kaffee.")),
+    [button("Projekt auf GitHub", () => openPage("project").catch(() => {}), { cls: "ghost" }),
+      button("☕ Kaffee spendieren", () => openPage("support").catch(() => {})),
+      button("Schließen", () => close(), { cls: "primary" })], true);
 }
 
 // ------------------------------------------------------------------ Ziehen & Ablegen, Tasten

@@ -1,7 +1,8 @@
 [package]
 name = "chromalith"
-version = "0.15.0"
-description = "Chromalith – farbige Reliefbilder aus Filament-Schichten"
+version = "0.16.0"
+description = "Chromalith – colour reliefs and lithophanes from filament layers"
+license = "MIT"
 edition = "2021"
 
 [lib]
@@ -16,6 +17,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-http = "2"
+sha2 = "0.10"
 
 [profile.release]
 codegen-units = 1
