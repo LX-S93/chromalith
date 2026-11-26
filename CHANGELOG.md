@@ -2,6 +2,10 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.20.1 – 2026-11-26
+
+- The tiger example is now a roaring tiger (also in the README showcase).
+
 ## 0.20.0 – 2026-11-26
 
 - **Sphere ornament redesigned for printing.** With "Screw cap on top" the sphere now has an internal thread at

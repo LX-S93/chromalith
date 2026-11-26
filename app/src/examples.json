@@ -2,20 +2,20 @@
  "tiger": {
   "stops": [
    [
-    "Beige",
+    "Grau hell",
     1
    ],
    [
-    "Hellblau",
-    2
+    "Blau",
+    5
+   ],
+   [
+    "Dunkelblau",
+    6
    ],
    [
     "Schwarz",
-    8
-   ],
-   [
-    "Rot",
-    16
+    13
    ],
    [
     "Orange",
