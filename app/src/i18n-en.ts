@@ -559,4 +559,12 @@ export const EN: Record<string, string> = {
   "Das trifft hier auch die Farben am besten.": "Here this also matches the colours best.",
   "Ein ruhiges Relief würde die Farben hier deutlich schlechter treffen; es lässt sich oben unter „Aufbau“ trotzdem wählen.": "A calm relief would match the colours clearly worse here; you can still choose it above under \"Layout\".",
   "1× zeigt die echte Höhe des Drucks. Höhere Werte überzeichnen das Relief nur in dieser Ansicht, damit Stufen besser zu erkennen sind. Doppelklick: zurück auf 1×.": "1× shows the true height of the print. Higher values exaggerate the relief in this view only, so steps are easier to see. Double-click: back to 1×.",
+  "Detailtreue": "Detail fidelity",
+  "Nur im farbtreuen Modus. Farben, die der Stapel nicht hergibt, werden nach ihrer Helligkeit einsortiert, statt alle auf derselben Schicht zu landen. So bleibt zum Beispiel eine Sonne vor hellem Himmel sichtbar. 0 = jede Stelle bekommt nur die ähnlichste Farbe; dabei können Details verschwinden.": "True-colour mode only. Colours the stack cannot produce are placed by their lightness instead of all landing on the same layer. This keeps, for example, a sun visible against a bright sky. 0 = every spot simply gets the most similar colour; details can disappear that way.",
+  "Form & Größe": "Shape & size",
+  "Filament & Licht": "Filament & light",
+  "Links Form, Wandstärken und Größe einstellen. Die Bildkorrektur ist unter „Bild“ eingeklappt.": "Set shape, wall thickness and size on the left. Image correction is collapsed under \"Image\".",
+  "Links Filament und Lichtquelle wählen. Die Simulation zeigt das Bild mit Licht von hinten.": "Choose filament and light source on the left. The simulation shows the image lit from behind.",
+  "Ergebnis prüfen: 3D-Ansicht mit „Licht an“ und Vergleich mit dem Original.": "Check the result: 3D view with \"Light on\" and comparison with the original.",
+  "Exportieren schreibt die STL der Lithophanie und ein Vorschaubild im Gegenlicht.": "Export writes the STL of the lithophane and a backlit preview image.",
 };

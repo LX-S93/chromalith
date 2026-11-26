@@ -522,3 +522,41 @@ describe("Relief folgt dem Bild", () => {
     expect(calmEnough(20, 12)).toBe(false);
   });
 });
+
+import { toneCurve, nearestHeights, lightRange, normalizeSettings as norm2 } from "../src/core";
+describe("Detailtreue im farbtreuen Modus", () => {
+  it("Tonwertkurve staucht nur die Enden und erhält die Reihenfolge", () => {
+    expect(toneCurve([20, 60], [10, 70])).toBeNull(); // Bild liegt im Bereich des Stapels
+    const lut = toneCurve([10, 90], [10, 65])!;
+    expect(lut[900]).toBeCloseTo(65, 3); // hellster Bildton -> hellster Ton des Stapels
+    expect(lut[300]).toBeCloseTo(30, 3); // Mitteltöne bleiben
+    for (let i = 1; i <= 1000; i++) expect(lut[i]).toBeGreaterThanOrEqual(lut[i - 1]);
+    expect(lut[800]).toBeLessThan(lut[900]); // Unterschiede oberhalb des Erreichbaren bleiben Unterschiede
+  });
+  it("helle Töne jenseits des Stapels bleiben unterscheidbar", () => {
+    // Stapel: zehn Grautöne von dunkel bis mittelhell; Bild: mittelgrau, hellgrau, weiß
+    const k = 10, colors = new Float32Array(k * 3), heights = new Float32Array(k);
+    for (let j = 0; j < k; j++) { colors.fill(0.1 + (0.45 * j) / (k - 1), j * 3, j * 3 + 3); heights[j] = 0.5 + j * 0.1; }
+    const rgb = Float32Array.from([0.3, 0.3, 0.3, 0.75, 0.75, 0.75, 1, 1, 1]);
+    const plain = nearestHeights(rgb, heights, colors, 0), fine = nearestHeights(rgb, heights, colors, 0.75);
+    expect(plain[1]).toBe(plain[2]); // ohne Detailtreue fallen Hellgrau und Weiß auf dieselbe Schicht
+    expect(fine[2]).toBeGreaterThan(fine[1]);
+    expect(fine[1]).toBeGreaterThan(fine[0]);
+    expect(fine[2]).toBeCloseTo(heights[k - 1]);
+  });
+  it("Helligkeitsbereich ohne Ausreißer; alte Projekte bekommen den Standardwert", () => {
+    const lab = new Float32Array(3000); for (let i = 0; i < 1000; i++) lab[i * 3] = i === 0 ? 99 : 20 + (i % 50);
+    expect(lightRange(lab)).toEqual([20, 69]);
+    expect(norm2({ width_mm: 50 } as any).color_detail).toBe(0.75);
+  });
+});
+
+describe("Lithophanie nutzt nur ihre eigenen Einstellungen", () => {
+  it("Motivgröße und Motivlage aus dem Farbrelief wirken nicht", () => {
+    const w = 24, h = 24, px = new Uint8Array(w * h * 4).fill(255);
+    for (let y = 6; y < 18; y++) for (let x = 6; x < 18; x++) { const o = (y * w + x) * 4; px[o] = px[o + 1] = px[o + 2] = 30; }
+    const img = fromRGBA8(w, h, px), s = { ...DEFAULT_SETTINGS, width_mm: 23 * 0.5, pixel_size_mm: 0.5, litho: true };
+    const a = lithoThickness(img, s), b = lithoThickness(img, { ...s, image_scale: 0.5, image_x: 20, image_y: -10, shape: "circle" });
+    expect(Array.from(b.t)).toEqual(Array.from(a.t));
+  });
+});

@@ -14,32 +14,115 @@ export function layerPalette(stops: ColorStop[], base: number, step: number, min
   return { heights, colors: simulate(hm, stops) };
 }
 
-/** Nächste Palettenfarbe je Punkt. `chroma` gewichtet die Buntheit (a, b) gegenüber der Helligkeit (L):
- *  1 = reiner Farbabstand, kleiner = die Höhe folgt stärker der Bildhelligkeit (ruhigeres Relief).
- *  Rückgabe: mittlerer echter Farbabstand der gewählten Farben. */
-function nearestIndex(lab: Float32Array, pal: Float32Array, out: Int32Array | null, chroma = 1): number {
+/** Helligkeitsbereich [dunkel, hell] in L*. */
+export type LightRange = [number, number];
+
+/** Robuster Helligkeitsbereich einer Lab-Liste: ohne den äußersten Anteil `p` an beiden Enden. */
+export function lightRange(lab: Float32Array, p = 0.005): LightRange {
+  const hist = new Uint32Array(101), n = lab.length / 3;
+  if (!n) return [0, 100];
+  for (let i = 0; i < lab.length; i += 3) hist[Math.min(100, Math.max(0, Math.round(lab[i])))]++;
+  const cut = Math.floor(n * p);
+  let lo = 0, hi = 100;
+  for (let acc = 0; lo < 100; lo++) { acc += hist[lo]; if (acc > cut) break; }
+  for (let acc = 0; hi > 0; hi--) { acc += hist[hi]; if (acc > cut) break; }
+  return [lo, Math.max(lo, hi)];
+}
+
+const paletteRange = (pal: Float32Array): LightRange => {
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < pal.length; i += 3) { if (pal[i] < lo) lo = pal[i]; if (pal[i] > hi) hi = pal[i]; }
+  return [lo, hi];
+};
+
+/** Tonwertkurve für den farbtreuen Modus. Ein Filament-Stapel erreicht oft nicht die hellsten oder dunkelsten Töne
+ *  des Bildes. Ohne Kurve landen dann alle Töne jenseits des Erreichbaren auf derselben Schicht, und was sich dort
+ *  nur in der Helligkeit unterscheidet (eine Sonne vor hellem Himmel), verschwindet. Die Kurve staucht deshalb das
+ *  Ende des Bildbereichs in das Ende des Stapelbereichs: Die Reihenfolge der Helligkeiten bleibt erhalten, Töne in
+ *  der Mitte bleiben unverändert. `knee` = Breite des gestauchten Bereichs als Vielfaches des Überstands,
+ *  `amount` = Stärke (0 = keine Kurve, 1 = volle Kurve).
+ *  Rückgabe: Tabelle L* (in Zehnteln, 0 bis 100) -> L* für die Zuordnung, oder null, wenn nichts zu stauchen ist. */
+export function toneCurve(img: LightRange, pal: LightRange, amount = 1, knee = 1): Float32Array | null {
+  const [a, b] = img, [A, B] = pal;
+  if (amount <= 0 || (b <= B + 1 && a >= A - 1)) return null;
+  const mid = (A + B) / 2;
+  const kh = b > B ? Math.max(mid, B - knee * (b - B)) : Infinity;
+  const kl = a < A ? Math.min(mid, A + knee * (A - a)) : -Infinity;
+  const lut = new Float32Array(1001);
+  for (let i = 0; i <= 1000; i++) {
+    const L = i / 10;
+    const t = L > kh ? Math.min(B, kh + ((L - kh) * (B - kh)) / (b - kh)) : L < kl ? Math.max(A, kl - ((kl - L) * (kl - A)) / (kl - a)) : L;
+    lut[i] = L + Math.min(1, amount) * (t - L);
+  }
+  return lut;
+}
+
+/** Detailtreue im farbtreuen Modus (0 bis 1). 0 = jede Stelle bekommt die Schicht mit dem kleinsten Farbabstand.
+ *  Höher = Farben, die der Stapel nicht hergibt, werden nach ihrer Helligkeit einsortiert statt alle auf dieselbe
+ *  Schicht zu fallen, und die Tonwertkurve greift: Helligkeitsunterschiede des Bildes bleiben im Druck erhalten.
+ *  Farben, die der Stapel gut trifft, bleiben davon unberührt. */
+export const DETAIL_DEFAULT = 0.75;
+export interface MatchOptions {
+  /** Helligkeitsbereich des Bildes für die Tonwertkurve; null = keine Kurve */
+  range?: LightRange | null;
+  /** Detailtreue 0 bis 1; ohne Angabe 0 (reiner Farbabstand) */
+  detail?: number;
+}
+/** Ab diesem Farbabstand zur besten Schicht gilt eine Farbe als „nicht im Stapel“; ab OUT_HI zählt fast nur noch
+ *  ihre Helligkeit (Gewicht bis LIGHT_MAX bei voller Detailtreue). */
+const OUT_LO = 6, OUT_HI = 18, LIGHT_MAX = 16;
+
+/** Passende Palettenfarbe je Punkt; Rückgabe: mittlerer Farbabstand (ΔE) der gewählten Farben zur Bildfarbe.
+ *  Ohne Optionen ist das die Schicht mit dem kleinsten Farbabstand. Diese glatte Zielgröße nutzen die Suche nach
+ *  Filamenten und das automatische Verteilen. Die Detailtreue kommt erst beim Berechnen der Höhen dazu. */
+function nearestIndex(lab: Float32Array, pal: Float32Array, out: Int32Array | null, o: MatchOptions = {}): number {
   const n = lab.length / 3, k = pal.length / 3;
+  const detail = Math.min(1, Math.max(0, o.detail ?? 0)), wMax = 1 + (LIGHT_MAX - 1) * detail;
+  const lut = o.range && detail > 0 ? toneCurve(o.range, paletteRange(pal), detail * 2) : null;
   let total = 0;
   for (let i = 0; i < n; i++) {
-    const L = lab[i * 3], A = lab[i * 3 + 1], B = lab[i * 3 + 2];
-    let best = Infinity, bi = 0, bd = 0;
+    const L0 = lab[i * 3], A = lab[i * 3 + 1], B = lab[i * 3 + 2];
+    const L = lut ? lut[Math.min(1000, Math.max(0, Math.round(L0 * 10)))] : L0;
+    let best = Infinity, bi = 0;
     for (let j = 0; j < k; j++) {
       const dl = L - pal[j * 3], da = A - pal[j * 3 + 1], db = B - pal[j * 3 + 2];
-      const ab = da * da + db * db, d = dl * dl + chroma * ab;
-      if (d < best) { best = d; bi = j; bd = dl * dl + ab; }
+      const d = dl * dl + da * da + db * db;
+      if (d < best) { best = d; bi = j; }
+    }
+    // Farbe außerhalb des Stapels: Helligkeit stärker gewichten und von der ähnlichsten Schicht aus schrittweise
+    // nach oben oder unten wandern, solange es besser wird. So bleibt der Punkt im selben Farbbereich des Stapels
+    // (kein Sprung zu einem ganz anderen Farbton mit zufällig passender Helligkeit).
+    if (detail > 0 && best > OUT_LO * OUT_LO) {
+      const t = Math.min(1, (Math.sqrt(best) - OUT_LO) / (OUT_HI - OUT_LO)), wl = 1 + (wMax - 1) * t * t * (3 - 2 * t);
+      const cost = (j: number) => { const dl = L - pal[j * 3], da = A - pal[j * 3 + 1], db = B - pal[j * 3 + 2]; return wl * dl * dl + da * da + db * db; };
+      let c = cost(bi);
+      for (const dir of [1, -1]) {
+        let j = bi + dir, moved = false;
+        while (j >= 0 && j < k) { const cj = cost(j); if (cj >= c) break; c = cj; bi = j; j += dir; moved = true; }
+        if (moved) break;
+      }
     }
     if (out) out[i] = bi;
-    total += Math.sqrt(bd);
+    if (detail > 0) { const dl = L0 - pal[bi * 3], da = A - pal[bi * 3 + 1], db = B - pal[bi * 3 + 2]; best = dl * dl + da * da + db * db; }
+    total += Math.sqrt(best);
   }
   return total / Math.max(1, n);
 }
 
-export function nearestHeights(rgb: Float32Array, heights: Float32Array, colors: Float32Array, chroma = 1): Float32Array {
-  const idx = new Int32Array(rgb.length / 3);
-  nearestIndex(labArray(rgb), labArray(colors), idx, chroma);
+/** Höhe je Bildpunkt aus der passenden Schicht. `detail` = Detailtreue (siehe oben); der Helligkeitsbereich des
+ *  Bildes wird dafür aus den sichtbaren Punkten bestimmt (`alpha`: durchsichtige zählen nicht). */
+export function nearestHeights(rgb: Float32Array, heights: Float32Array, colors: Float32Array, detail = 0, alpha?: Float32Array): Float32Array {
+  const idx = new Int32Array(rgb.length / 3), lab = labArray(rgb);
+  let range: LightRange | null = null;
+  if (detail > 0) {
+    if (!alpha) range = lightRange(lab);
+    else { const vis: number[] = []; for (let i = 0; i < alpha.length; i++) if (alpha[i] >= 0.5) vis.push(lab[i * 3], 0, 0); range = vis.length ? lightRange(Float32Array.from(vis)) : null; }
+  }
+  nearestIndex(lab, labArray(colors), idx, { range, detail });
   return Float32Array.from(idx, (i) => heights[i]);
 }
 
+/** Mittlerer Farbabstand (ΔE) zwischen Bild (Lab-Stichprobe) und der jeweils ähnlichsten Schicht des Stapels. */
 export function colorError(lab: Float32Array, stops: ColorStop[], base: number, step: number, minH: number, maxH: number): number {
   const { colors } = layerPalette(stops, base, step, minH, maxH);
   return nearestIndex(lab, labArray(colors), null);

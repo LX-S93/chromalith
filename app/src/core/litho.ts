@@ -22,7 +22,8 @@ export const acesTone = (x: number) => Math.min(1, Math.max(0, (x * (2.51 * x + 
 
 /** Wandstärke je Bildpunkt in mm. Nutzt Helligkeit, Kontrast, Gamma und Glättung wie das Farbrelief. */
 export function lithoThickness(img: Raster, s: HeightSettings): LithoThickness {
-  const { w, h, rgb, alpha } = prepareImage(img, { ...s, shape: "rect" });
+  // Form, Motivgröße und Motivlage gehören zum Farbrelief und sind bei der Lithophanie ausgeblendet: hier ohne Wirkung
+  const { w, h, rgb, alpha } = prepareImage(img, { ...s, shape: "rect", image_scale: 1, image_x: 0, image_y: 0 });
   let lum = luminance(rgb, s.luma_method, s.linearize);
   lum = medianFilter(lum, w, h, detailKernel(s));
   lum = gaussianBlur(lum, w, h, s.smoothing_px);

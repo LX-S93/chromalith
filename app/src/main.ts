@@ -4,7 +4,7 @@ import pkg from "../package.json";
 import {
   BREAKOUTS, DEFAULT_SETTINGS, HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
   parseProject, serializeLibrary, serializeProject, starterLibrary, toRGBA8, validate, type ColorStop, type Filament,
-  LITHO_FORMS, materialDensity, filamentAtLayer, layerTopZ, simulate, type HeightSettings, type Island, type Raster,
+  LITHO_FORMS, materialDensity, filamentAtLayer, layerTopZ, simulate, effectiveMode, type HeightSettings, type Island, type Project, type Raster,
 } from "./core";
 import * as compute from "./compute";
 import type { PreviewResult } from "./compute";
@@ -176,6 +176,7 @@ const left = h("aside", { class: "left" },
   section("Bild", false,
     (fields.height_mode = selectField("Höhe aus", HEIGHT_MODES, (v) => setSetting("height_mode", v as any),
       "Automatisch: Bunte Filamente im Stapel = farbtreu. Sonst: Ist das oberste Filament dunkler als das unterste, werden dunkle Bildstellen hoch.")).el,
+    sl("color_detail", "Detailtreue", 0, 1, 0.05, "", "Nur im farbtreuen Modus. Farben, die der Stapel nicht hergibt, werden nach ihrer Helligkeit einsortiert, statt alle auf derselben Schicht zu landen. So bleibt zum Beispiel eine Sonne vor hellem Himmel sichtbar. 0 = jede Stelle bekommt nur die ähnlichste Farbe; dabei können Details verschwinden.", 2),
     (fields.luma_method = selectField("Helligkeit", LUMA_METHODS, (v) => setSetting("luma_method", v as any), "Wie aus den Bildfarben die Helligkeit berechnet wird. „Wahrnehmung“ passt fast immer.")).el,
     (fields.linearize = switchField("sRGB linearisieren", (v) => setSetting("linearize", v), "Rechnet die Helligkeit physikalisch statt nach Bildschirmwerten. Macht Mitteltöne dunkler.")).el,
     sl("detail_mm", "Mindestdetail", 0, 2, 0.1, "mm", "Linien und Punkte, die schmaler sind als dieser Wert, lassen sich nicht drucken: einzelne Spitzen werden entfernt, feine Linien auf diese Breite verbreitert. Empfohlen: Düsenbreite (0,4 mm). 0 = aus.", 1),
@@ -197,7 +198,10 @@ const islandPanel = new IslandPanel({
   changed: () => { markDirty(); schedule(); },
 });
 left.append(section("Farbinseln", false, islandPanel.el));
-for (const d of left.querySelectorAll("details.section")) if (["Form", "Schichten", "Farbinseln"].includes(d.querySelector("summary")!.textContent!)) (d as HTMLElement).dataset.mode = "relief";
+// Nur fürs Farbrelief: Form, Schichten und Farbinseln, dazu Rahmen, Höhenmodus und Detailtreue.
+// Die Lithophanie nutzt davon nichts, deshalb sind sie dort ausgeblendet (style.css: #app.litho [data-mode="relief"]).
+for (const d of left.querySelectorAll<HTMLElement>("details.section")) if (["Form", "Schichten", "Farbinseln"].includes(d.querySelector("summary > span")!.textContent!)) d.dataset.mode = "relief";
+for (const k of ["border_mm", "border_height_mm", "height_mode", "color_detail"] as const) fields[k]!.el.dataset.mode = "relief";
 
 // ------------------------------------------------------------------ Lithophanie
 /** Lichtquellen: Farbe (aus der Farbtemperatur), Punktlicht oder gleichmäßig, Höhe im Körper, Grundhelligkeit */
@@ -218,7 +222,7 @@ const lamp = () => LAMPS[lithoView.lamp] ?? LAMPS.warm;
 const lithoLight = () => ({ filamentColor: lithoView.filament.color, td: lithoView.filament.td, light: lamp().color, intensity: lithoView.intensity * lamp().power });
 const kindPill = h("div", { class: "mode-pill", style: { display: "flex", marginBottom: "10px" }, title: "Farbrelief: farbiges Bild aus Filament-Schichten. Lithophanie: einfarbiges Bild, das im Gegenlicht erscheint." });
 const kindBtns = ([[false, "Farbrelief"], [true, "Lithophanie"]] as const).map(([v, label]) => {
-  const b = h("button", { style: { flex: "1" }, onclick: () => { setSetting("litho", v); syncLitho(); } }, label);
+  const b = h("button", { style: { flex: "1" }, onclick: () => { setSetting("litho", v); syncLitho(); syncMode(); renderSteps(); } }, label);
   kindPill.append(b); return [v, b] as const;
 });
 const lithoFilBtn = button("", async () => {
@@ -401,18 +405,28 @@ const STEP_HINTS = [
   "Ergebnis prüfen: Vergleich mit dem Original, 3D-Ansicht, Farbanalyse mit Verbrauch und Kosten.",
   "Exportieren schreibt STL, 3MF mit Farbwechseln, Farbwechsel-Liste und den Druck-Assistenten.",
 ];
+// Lithophanie: kein Filament-Stapel und keine Farbwechsel, dafür Wandstärken, ein Filament und die Lichtquelle
+const STEPS_LITHO = ["Bild", "Form & Größe", "Filament & Licht", "Vorschau", "Export"];
+const STEP_HINTS_LITHO = [
+  "Bild öffnen oder ins Fenster ziehen.",
+  "Links Form, Wandstärken und Größe einstellen. Die Bildkorrektur ist unter „Bild“ eingeklappt.",
+  "Links Filament und Lichtquelle wählen. Die Simulation zeigt das Bild mit Licht von hinten.",
+  "Ergebnis prüfen: 3D-Ansicht mit „Licht an“ und Vergleich mit dem Original.",
+  "Exportieren schreibt die STL der Lithophanie und ein Vorschaubild im Gegenlicht.",
+];
 let step = 0;
 const stepsEl = h("div", { class: "steps" });
 const stepHint = h("div", { class: "step-hint" });
 const flash = (el: HTMLElement) => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
 function renderSteps() {
   clear(stepsEl);
-  STEPS.forEach((label, i) => {
+  const litho = !!state.settings.litho, hints = litho ? STEP_HINTS_LITHO : STEP_HINTS;
+  (litho ? STEPS_LITHO : STEPS).forEach((label, i) => {
     if (i) stepsEl.append(h("div", { class: "step-sep" }));
-    stepsEl.append(h("button", { class: "step" + (i === step ? " current" : i < step ? " done" : ""), title: STEP_HINTS[i], onclick: () => goStep(i) },
+    stepsEl.append(h("button", { class: "step" + (i === step ? " current" : i < step ? " done" : ""), title: hints[i], onclick: () => goStep(i) },
       h("i", null, i < step ? "✓" : String(i + 1)), label));
   });
-  stepHint.textContent = STEP_HINTS[step];
+  stepHint.textContent = hints[step];
   stepsEl.append(stepHint);
   if (step < STEPS.length - 1 && state.image) stepsEl.append(button("Weiter", () => goStep(step + 1), { cls: "small primary" }));
 }
@@ -422,7 +436,7 @@ function goStep(i: number) {
   const sections = [...left.querySelectorAll("details")] as HTMLDetailsElement[];
   if (i === 0) { if (!state.image) openImage(); else showTab(1); }
   if (i === 1) { sections.forEach((d, k) => (d.open = k < 2)); left.scrollTop = 0; flash(left); showTab(0); }
-  if (i === 2) { flash(stack.el); showTab(0); }
+  if (i === 2) { if (state.settings.litho) { lithoSection.open = true; left.scrollTop = 0; flash(lithoSection); } else flash(stack.el); showTab(0); }
   if (i === 3) { showTab(0); if (!compareOn) { compareOn = true; store.set("compare", true); } updateCompare(); }
   if (i === 4) exportAll();
 }
@@ -490,11 +504,15 @@ for (const [k, f] of Object.entries(fields)) f!.setDefault((DEFAULT_SETTINGS as 
 lithoIntensity.setDefault(1);
 function syncFields() {
   for (const [k, f] of Object.entries(fields)) f!.set((state.settings as any)[k]);
-  syncMode(); syncShapeFields(); syncLitho();
+  syncMode(); syncShapeFields(); syncLitho(); renderSteps();
 }
 function syncMode(effective?: string) {
   for (const [k, b] of modeButtons) b.classList.toggle("active", k === state.settings.height_mode);
   const eff = effective ?? state.result?.mode;
+  // nur zeigen, was im aktuellen Modus wirkt: farbtreu rechnet nicht mit der Helligkeit, die Helligkeits-Modi nicht mit der Detailtreue
+  const color = !state.settings.litho && (state.settings.height_mode === "auto" ? eff ?? effectiveMode({ settings: state.settings, stops: state.stops } as Project) : state.settings.height_mode) === "color";
+  fields.color_detail!.el.style.display = color ? "" : "none";
+  fields.luma_method!.el.style.display = fields.linearize!.el.style.display = color ? "none" : "";
   modeButtons.get("auto")!.textContent = state.settings.height_mode === "auto" && eff
     ? `Auto · ${{ bright_high: "hell hoch", dark_high: "dunkel hoch", color: "farbtreu" }[eff]}` : "Auto";
 }

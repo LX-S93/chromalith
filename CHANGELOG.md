@@ -2,6 +2,22 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.26.0 – 2026-11-26
+
+- True-colour mode keeps details: colours the stack cannot produce used to land on the same layer, so features that differ mainly in brightness disappeared (for example the sun in the "Sunset" example). Such colours are now placed by their lightness, and the brightest and darkest tones of the image are compressed into the range of the stack instead of being cut off. Colours the stack matches well stay as they were.
+- New slider "Detail fidelity" (section "Image", true-colour mode only). 0 gives the previous behaviour.
+- Lithophane mode shows only settings that have an effect there: "Shape", "Layers", "Colour islands", the frame and "Height from" are hidden (they had been visible by mistake since 0.23). Motif size and position from the colour relief no longer affect lithophanes, and the step bar has its own labels and hints.
+- Colour relief: the brightness method and "Linearise sRGB" are shown only in the brightness modes, where they are used.
+- "Suggest filaments" no longer lists a filament whose change would lie above the top layer.
+
+<!-- de
+- Der farbtreue Modus behält Details: Farben, die der Stapel nicht hergibt, landeten bisher auf derselben Schicht. Was sich vor allem in der Helligkeit unterscheidet, verschwand dadurch (zum Beispiel die Sonne im Beispiel „Sonnenuntergang“). Solche Farben werden jetzt nach ihrer Helligkeit einsortiert, und die hellsten und dunkelsten Töne des Bildes werden in den Bereich des Stapels gestaucht statt abgeschnitten. Farben, die der Stapel gut trifft, bleiben wie bisher.
+- Neuer Regler „Detailtreue“ (Abschnitt „Bild“, nur im farbtreuen Modus). 0 entspricht dem bisherigen Verhalten.
+- Die Lithophanie zeigt nur noch Einstellungen, die dort wirken: „Form“, „Schichten“, „Farbinseln“, der Rahmen und „Höhe aus“ sind ausgeblendet (sie waren seit 0.23 versehentlich sichtbar). Motivgröße und Motivlage aus dem Farbrelief wirken nicht mehr auf Lithophanien, und die Schritt-Leiste hat eigene Beschriftungen und Hinweise.
+- Farbrelief: Die Helligkeits-Methode und „sRGB linearisieren“ erscheinen nur in den Helligkeits-Modi, in denen sie benutzt werden.
+- „Filamente vorschlagen“ führt kein Filament mehr auf, dessen Wechsel über der obersten Schicht läge.
+-->
+
 ## 0.25.0 – 2026-11-26
 
 - Fine details are kept: the smoothing introduced in 0.22 blurred thin branches, antlers and outlines. "Minimum detail" now only removes what a nozzle cannot print (thin raised needles and ridges) and leaves narrow grooves alone, so fine dark lines stay crisp.

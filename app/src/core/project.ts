@@ -34,7 +34,7 @@ export function buildProject(p: Project, renderDigits?: DigitRenderer, settings:
   let colorFn;
   if (mode === "color") {
     const { heights, colors } = layerPalette(p.stops, settings.base_layer_mm, settings.layer_height_mm, settings.min_height_mm, settings.max_height_mm);
-    colorFn = (rgb: Float32Array) => nearestHeights(rgb, heights, colors);
+    colorFn = (rgb: Float32Array, _w: number, _h: number, alpha: Float32Array) => nearestHeights(rgb, heights, colors, settings.color_detail, alpha);
   }
   const hm = buildHeightmap(p.image, settings, { mode, colorFn, renderDigits });
   const islands = (p.islands ?? []).filter((i) => i.seeds.length);

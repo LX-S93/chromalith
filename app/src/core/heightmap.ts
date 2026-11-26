@@ -40,6 +40,8 @@ export interface HeightSettings {
   gamma: number;
   smoothing_px: number;
   detail_mm: number;
+  /** Detailtreue im farbtreuen Modus, 0 bis 1 (siehe colormatch.ts) */
+  color_detail: number;
   border_mm: number;
   border_height_mm: number;
   shape: Shape;
@@ -91,7 +93,7 @@ export interface HeightSettings {
 export const DEFAULT_SETTINGS: HeightSettings = {
   width_mm: 100, pixel_size_mm: 0.2, min_height_mm: 0.48, max_height_mm: 2.24,
   base_layer_mm: 0.2, layer_height_mm: 0.08, luma_method: "rec709", linearize: false,
-  height_mode: "auto", brightness: 0, contrast: 1, gamma: 1, smoothing_px: 0, detail_mm: 0.4,
+  height_mode: "auto", brightness: 0, contrast: 1, gamma: 1, smoothing_px: 0, detail_mm: 0.4, color_detail: 0.75,
   border_mm: 0, border_height_mm: 0, shape: "rect", hole_mm: 0, rim_mm: 0, raise_mm: 0.6,
   clock_numbers: false, numbers_mm: 12, image_scale: 1, image_x: 0, image_y: 0,
   breakout: "off", breakout_frame: 75, breakout_x: 0, breakout_y: 0, breakout_tol: 14, breakout_float_mm: 0.6,
@@ -242,7 +244,7 @@ export type DigitRenderer = (w: number, h: number, digits: { text: string; x: nu
 export interface BuildOptions {
   mode: EffectiveMode;
   /** Für den farbtreuen Modus: RGB (3/Punkt) -> Höhe in mm je Punkt */
-  colorFn?: (rgb: Float32Array, w: number, h: number) => Float32Array;
+  colorFn?: (rgb: Float32Array, w: number, h: number, alpha: Float32Array) => Float32Array;
   renderDigits?: DigitRenderer;
 }
 
@@ -365,7 +367,7 @@ export function buildHeightmap(img: Raster, s: HeightSettings, opt: BuildOptions
       for (let i = 0; i < n; i++) src[i * 3 + c] = adjustTone(bl[i], s);
     }
     // an Farbkanten treffen Mischpunkte oft eine ganz andere Höhe: solche Säume entfernen, feine Linien behalten
-    heights = opt.colorFn(src, w, h);
+    heights = opt.colorFn(src, w, h, alpha);
     if (s.detail_mm > 0) heights = removeSeams(heights, w, h, s.layer_height_mm * 1.5);
   } else {
     let lum = luminance(rgb, s.luma_method, s.linearize);

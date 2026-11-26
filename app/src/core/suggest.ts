@@ -99,7 +99,10 @@ export function suggestFilaments(lab: Float32Array, rgb: Float32Array, library: 
   }
   const fin = evalOrder(order, 4);
   o.onProgress?.(1);
-  return { stops: order.map((f, i) => ({ filament: f, start_layer: fin.starts[i] })), error: fin.error };
+  // Filamente, deren Wechsel über der obersten Schicht läge, kämen im Druck nicht vor: weglassen
+  const top = Math.round((o.maxH - o.base) / o.step) + 1;
+  const stops = order.map((f, i) => ({ filament: f, start_layer: fin.starts[i] })).filter((s, i) => i === 0 || s.start_layer <= top);
+  return { stops, error: fin.error };
 }
 
 /** „auto“ nimmt das ruhige Relief, solange dessen Farbabweichung höchstens um diesen Anteil (plus eine halbe
