@@ -475,4 +475,10 @@ export const EN: Record<string, string> = {
   "Kugel: Durchmesser außen {} mm.": "Sphere: outer diameter {} mm.",
   "Außerhalb des Bildes ist die Wand dick und bleibt dunkel.": "Outside the image the wall is thick and stays dark.",
   "Öffnung unten {} mm.": "Bottom opening {} mm.", "Oben Öffnung {} mm mit Schraubdeckel.": "Top opening {} mm with screw cap.",
+  "Eigenes Maß": "Custom size", "LED-Teelicht Standard (38 mm)": "LED tea light standard (38 mm)", "LED-Teelicht Maxi (58 mm)": "LED tea light maxi (58 mm)",
+  "LED-Teelicht groß (45 mm)": "LED tea light large (45 mm)", "Mini-LED / Lichterkette (20 mm)": "Mini LED / fairy lights (20 mm)",
+  "Leuchtmittel": "Light", "Leuchtmittel Ø (gemessen)": "Light Ø (measured)",
+  "Größe des Lichts, das in die Kugel soll. Daraus ergibt sich die Öffnung (2 mm Luft) und, wenn nötig, eine größere Kugel.": "Size of the light that goes into the sphere. The opening (2 mm clearance) and, if necessary, a larger sphere follow from it.",
+  "Durchmesser deines LED-Teelichts oder Lichts mit dem Messschieber messen und hier eintragen. Die Öffnung wird 2 mm größer.": "Measure the diameter of your LED tea light or light with callipers and enter it here. The opening becomes 2 mm larger.",
+  "Kugel auf {} mm vergrößert, damit ein Leuchtmittel mit {} mm hinein- und herauspasst.": "Sphere enlarged to {} mm so that a {} mm light fits in and out.",
 };

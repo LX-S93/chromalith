@@ -222,6 +222,26 @@ const lithoLightSel = selectField("Lichtquelle", LIGHTS, (v) => { lithoView.lamp
 const lithoIntensity = sliderField("Lichtstärke", 0.4, 4, 0.1, "×", (v) => { lithoView.intensity = v; store.set("lithoIntensity", v); schedule(0); },
   "Wie hell die Lampe ist. Bei zu wenig Licht bleiben dicke Stellen schwarz, bei zu viel überstrahlen dünne.", 1);
 lithoLightSel.set(lithoView.lamp); lithoIntensity.set(lithoView.intensity);
+// Leuchtmittel für die Kugel: aus dem gemessenen Durchmesser folgen Öffnung und Mindestgröße der Kugel
+const LIGHT_SIZES: Record<string, string> = { "0": "Eigenes Maß", "38": "LED-Teelicht Standard (38 mm)", "58": "LED-Teelicht Maxi (58 mm)", "45": "LED-Teelicht groß (45 mm)", "20": "Mini-LED / Lichterkette (20 mm)" };
+function applyLightSize(d: number) {
+  store.set("lithoLightMm", d);
+  const open = Math.round(d + 2), s = state.settings;
+  // mit Schraubdeckel kommt das Licht von oben hinein, sonst wird die Kugel über das Licht gestellt
+  if (s.litho_cap) { setSetting("litho_cap_mm", Math.min(60, open)); fields.litho_cap_mm?.set(s.litho_cap_mm); }
+  else { setSetting("litho_hole_mm", Math.min(60, open)); fields.litho_hole_mm?.set(s.litho_hole_mm); }
+  // der Deckel soll höchstens gut die Hälfte des Kugeldurchmessers einnehmen
+  const minW = Math.ceil((s.litho_cap ? (open + 14) / 0.6 : open / 0.62) / 5) * 5;
+  if (s.width_mm < minW) {
+    setSetting("width_mm", minW); fields.width_mm?.set(minW);
+    toast(`Kugel auf ${minW} mm vergrößert, damit ein Leuchtmittel mit ${d} mm hinein- und herauspasst.`, "ok", 6000);
+  }
+}
+const lightSizeSel = selectField("Leuchtmittel", LIGHT_SIZES, (v) => { if (v !== "0") { lightSize.set(Number(v)); applyLightSize(Number(v)); } },
+  "Größe des Lichts, das in die Kugel soll. Daraus ergibt sich die Öffnung (2 mm Luft) und, wenn nötig, eine größere Kugel.");
+const lightSize = sliderField("Leuchtmittel Ø (gemessen)", 10, 58, 1, "mm", (v) => { lightSizeSel.set(v in LIGHT_SIZES ? String(v) : "0"); applyLightSize(v); },
+  "Durchmesser deines LED-Teelichts oder Lichts mit dem Messschieber messen und hier eintragen. Die Öffnung wird 2 mm größer.", 0);
+{ const d = store.get("lithoLightMm", 38); lightSize.set(d); lightSizeSel.set(String(d) in LIGHT_SIZES ? String(d) : "0"); }
 const lithoSection = section("Lithophanie", true,
   (fields.litho_form = selectField("Form", LITHO_FORMS, (v) => {
     // sinnvolle Bildgröße je Form: Zylinder rundum, Kugel vorn aufgesetzt
@@ -238,8 +258,9 @@ const lithoSection = section("Lithophanie", true,
   sl("litho_rest_mm", "Wandstärke neben dem Bild", 0.6, 4, 0.1, "mm", "Wandstärke von Kugel oder Zylinder dort, wo kein Bild liegt. Dünner leuchtet der ganze Körper mit, dicker bleibt er um das Bild herum dunkel.", 1),
   sl("litho_height_mm", "Höhe des Zylinders (0 = wie Bild)", 0, 300, 1, "mm", "Eigene Höhe für den Zylinder. Bei 0 ist er genau so hoch wie das Bild.", 0),
   sl("litho_hole_mm", "Öffnung unten Ø", 0, 60, 1, "mm", "Öffnung für LED-Teelicht oder Lichterkette. Die Kugel wird mit der Öffnung nach unten gedruckt. 0 = geschlossen.", 0),
-  (fields.litho_cap = switchField("Schraubdeckel oben", (v) => { setSetting("litho_cap", v); syncLitho(); }, "Öffnung oben mit Gewinde und abschraubbarem Deckel, um das Leuchtmittel einzusetzen und zu tauschen. Der Deckel liegt in der STL neben der Kugel und trägt die Öse.")).el,
-  sl("litho_cap_mm", "Öffnung oben Ø", 15, 50, 1, "mm", "Lichte Weite der oberen Öffnung. 26 mm passt für kleine LED-Lichter und Lichterketten, ein LED-Teelicht braucht etwa 40 mm.", 0),
+  lightSizeSel.el, lightSize.el,
+  (fields.litho_cap = switchField("Schraubdeckel oben", (v) => { setSetting("litho_cap", v); if (v) applyLightSize(store.get("lithoLightMm", 38)); syncLitho(); }, "Öffnung oben mit Gewinde und abschraubbarem Deckel, um das Leuchtmittel einzusetzen und zu tauschen. Der Deckel liegt in der STL neben der Kugel und trägt die Öse.")).el,
+  sl("litho_cap_mm", "Öffnung oben Ø", 12, 60, 1, "mm", "Lichte Weite der oberen Öffnung. 26 mm passt für kleine LED-Lichter und Lichterketten, ein LED-Teelicht braucht etwa 40 mm.", 0),
   (fields.litho_loop = switchField("Öse zum Aufhängen", (v) => setSetting("litho_loop", v), "Setzt oben einen Ring für Faden oder Haken auf die Kugel.")).el,
   (fields.litho_invert = switchField("Umkehren (Negativ)", (v) => setSetting("litho_invert", v), "Helle Stellen dick statt dünn. Nur für Sonderfälle.")).el,
   h("div", { class: "field" }, h("label", null, "Filament"), lithoFilBtn),
@@ -253,7 +274,7 @@ function syncLitho() {
   for (const [v, b] of kindBtns) b.classList.toggle("active", v === on);
   lithoFilBtn.replaceChildren(h("div", { class: "swatch", style: { background: lithoView.filament.color } }), `${lithoView.filament.name} · TD ${lithoView.filament.td.toFixed(1)}`);
   const show = (k: keyof HeightSettings, vis: boolean) => { const el = fields[k]?.el; if (el) el.style.display = vis ? "" : "none"; };
-  show("litho_angle_deg", form === "curved"); const round = form === "sphere" || form === "cylinder"; for (const k of ["litho_img_deg", "litho_img_x", "litho_img_y", "litho_repeat", "litho_rest_mm"] as const) show(k, round); show("litho_height_mm", form === "cylinder"); show("litho_cap", form === "sphere"); show("litho_cap_mm", form === "sphere" && !!state.settings.litho_cap); show("litho_hole_mm", form === "sphere"); show("litho_loop", form === "sphere");
+  show("litho_angle_deg", form === "curved"); const round = form === "sphere" || form === "cylinder"; for (const k of ["litho_img_deg", "litho_img_x", "litho_img_y", "litho_repeat", "litho_rest_mm"] as const) show(k, round); show("litho_height_mm", form === "cylinder"); show("litho_cap", form === "sphere"); lightSizeSel.el.style.display = lightSize.el.style.display = form === "sphere" ? "" : "none"; show("litho_cap_mm", form === "sphere" && !!state.settings.litho_cap); show("litho_hole_mm", form === "sphere"); show("litho_loop", form === "sphere");
   const wl = fields.width_mm?.el.querySelector("label");
   if (wl) wl.textContent = !on ? "Breite" : form === "cylinder" || form === "sphere" ? "Durchmesser" : form === "curved" ? "Breite (Bogenlänge)" : "Breite";
 }

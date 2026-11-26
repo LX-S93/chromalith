@@ -2,6 +2,13 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.18.0 – 2026-11-26
+
+- **Sphere ornaments: opening sized for your light.** Choose a preset (LED tea light standard 38 mm, large 45 mm,
+  maxi 58 mm, mini LED / fairy lights 20 mm) or enter the measured diameter. The opening is set 2 mm larger
+  (top opening with screw cap, otherwise the bottom opening), and the sphere is enlarged automatically if the
+  light would not fit in and out.
+
 ## 0.17.0 – 2026-11-26
 
 - **Lithophane ornaments and lampshades: the image is no longer stretched.** On spheres and cylinders the image
