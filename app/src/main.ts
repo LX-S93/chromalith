@@ -223,12 +223,23 @@ const lithoIntensity = sliderField("Lichtstärke", 0.4, 4, 0.1, "×", (v) => { l
   "Wie hell die Lampe ist. Bei zu wenig Licht bleiben dicke Stellen schwarz, bei zu viel überstrahlen dünne.", 1);
 lithoLightSel.set(lithoView.lamp); lithoIntensity.set(lithoView.intensity);
 const lithoSection = section("Lithophanie", true,
-  (fields.litho_form = selectField("Form", LITHO_FORMS, (v) => { setSetting("litho_form", v as any); syncLitho(); }, "Flach für Fensterbilder und Leuchtrahmen, gebogen steht von selbst, Zylinder als Lampenschirm, Kugel als Ornament.")).el,
+  (fields.litho_form = selectField("Form", LITHO_FORMS, (v) => {
+    // sinnvolle Bildgröße je Form: Zylinder rundum, Kugel vorn aufgesetzt
+    if (v === "cylinder" && state.settings.litho_img_deg === 150) { setSetting("litho_img_deg", 360); fields.litho_img_deg?.set(360); }
+    if (v === "sphere" && state.settings.litho_img_deg === 360) { setSetting("litho_img_deg", 150); fields.litho_img_deg?.set(150); }
+    setSetting("litho_form", v as any); syncLitho(); }, "Flach für Fensterbilder und Leuchtrahmen, gebogen steht von selbst, Zylinder als Lampenschirm, Kugel als Ornament.")).el,
   sl("litho_min_mm", "Dünnste Stelle (hell)", 0.3, 2, 0.05, "mm", "Wandstärke an den hellsten Bildstellen. 0,6 mm bis 0,8 mm ist stabil und lässt viel Licht durch."),
-  sl("litho_max_mm", "Dickste Stelle (dunkel)", 1.2, 6, 0.1, "mm", "Wandstärke an den dunkelsten Bildstellen. Richtwert: etwa 60 bis 80 % des TD-Werts deines Filaments.", 1),
+  sl("litho_max_mm", "Dickste Stelle (dunkel)", 1.2, 6, 0.1, "mm", "Wandstärke an den dunkelsten Bildstellen. Üblich sind 2,4 bis 3 mm bei weißem PLA; Richtwert: etwa 60 % des TD-Werts deines Filaments.", 1),
   sl("litho_angle_deg", "Bogen", 30, 300, 5, "°", "Wie weit die gebogene Lithophanie herumläuft. 120° steht stabil.", 0),
-  sl("litho_band_deg", "Bildhöhe auf der Kugel", 25, 75, 1, "°", "So weit reicht das Bild vom Äquator nach oben und unten. Darüber und darunter bleibt die Kugel dunkel.", 0),
+  sl("litho_img_deg", "Bildgröße auf dem Körper", 30, 360, 5, "°", "Wie breit das Bild auf Kugel oder Zylinder liegt (als Winkel). Die Höhe folgt aus dem Bild, es wird nichts gestreckt; was über den Körper hinausragt, wird abgeschnitten.", 0),
+  sl("litho_img_x", "Bild drehen (links/rechts)", -180, 180, 1, "°", "Schiebt das Bild um den Körper herum.", 0),
+  sl("litho_img_y", "Bild nach oben/unten", -100, 100, 1, "%", "Schiebt das Bild auf dem Körper nach oben oder unten.", 0),
+  (fields.litho_repeat = switchField("Bild rundum wiederholen", (v) => setSetting("litho_repeat", v), "Setzt das Bild mehrmals nebeneinander rund um den Körper, statt nur einmal vorn. Die Anzahl ergibt sich aus der Bildgröße.")).el,
+  sl("litho_rest_mm", "Wandstärke neben dem Bild", 0.6, 4, 0.1, "mm", "Wandstärke von Kugel oder Zylinder dort, wo kein Bild liegt. Dünner leuchtet der ganze Körper mit, dicker bleibt er um das Bild herum dunkel.", 1),
+  sl("litho_height_mm", "Höhe des Zylinders (0 = wie Bild)", 0, 300, 1, "mm", "Eigene Höhe für den Zylinder. Bei 0 ist er genau so hoch wie das Bild.", 0),
   sl("litho_hole_mm", "Öffnung unten Ø", 0, 60, 1, "mm", "Öffnung für LED-Teelicht oder Lichterkette. Die Kugel wird mit der Öffnung nach unten gedruckt. 0 = geschlossen.", 0),
+  (fields.litho_cap = switchField("Schraubdeckel oben", (v) => { setSetting("litho_cap", v); syncLitho(); }, "Öffnung oben mit Gewinde und abschraubbarem Deckel, um das Leuchtmittel einzusetzen und zu tauschen. Der Deckel liegt in der STL neben der Kugel und trägt die Öse.")).el,
+  sl("litho_cap_mm", "Öffnung oben Ø", 15, 50, 1, "mm", "Lichte Weite der oberen Öffnung. 26 mm passt für kleine LED-Lichter und Lichterketten, ein LED-Teelicht braucht etwa 40 mm.", 0),
   (fields.litho_loop = switchField("Öse zum Aufhängen", (v) => setSetting("litho_loop", v), "Setzt oben einen Ring für Faden oder Haken auf die Kugel.")).el,
   (fields.litho_invert = switchField("Umkehren (Negativ)", (v) => setSetting("litho_invert", v), "Helle Stellen dick statt dünn. Nur für Sonderfälle.")).el,
   h("div", { class: "field" }, h("label", null, "Filament"), lithoFilBtn),
@@ -242,7 +253,7 @@ function syncLitho() {
   for (const [v, b] of kindBtns) b.classList.toggle("active", v === on);
   lithoFilBtn.replaceChildren(h("div", { class: "swatch", style: { background: lithoView.filament.color } }), `${lithoView.filament.name} · TD ${lithoView.filament.td.toFixed(1)}`);
   const show = (k: keyof HeightSettings, vis: boolean) => { const el = fields[k]?.el; if (el) el.style.display = vis ? "" : "none"; };
-  show("litho_angle_deg", form === "curved"); show("litho_band_deg", form === "sphere"); show("litho_hole_mm", form === "sphere"); show("litho_loop", form === "sphere");
+  show("litho_angle_deg", form === "curved"); const round = form === "sphere" || form === "cylinder"; for (const k of ["litho_img_deg", "litho_img_x", "litho_img_y", "litho_repeat", "litho_rest_mm"] as const) show(k, round); show("litho_height_mm", form === "cylinder"); show("litho_cap", form === "sphere"); show("litho_cap_mm", form === "sphere" && !!state.settings.litho_cap); show("litho_hole_mm", form === "sphere"); show("litho_loop", form === "sphere");
   const wl = fields.width_mm?.el.querySelector("label");
   if (wl) wl.textContent = !on ? "Breite" : form === "cylinder" || form === "sphere" ? "Durchmesser" : form === "curved" ? "Breite (Bogenlänge)" : "Breite";
 }

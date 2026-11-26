@@ -41,8 +41,9 @@ by size and SHA-256 before it is started.
   preview image and a step-by-step **print assistant** page for your phone
 - Consumption, weight and cost per filament
 - Filament library with import, plus optional read-only sync with [Spoolman](https://github.com/Donkie/Spoolman)
-- **Lithophanes:** flat, curved, cylinder (lampshade) and sphere (ornament with hanging loop), light simulation
-  with different lamps, STL export
+- **Lithophanes:** flat, curved, cylinder (lampshade) and sphere (ornament with hanging loop and optional
+  screw cap for the light); place, scale and repeat the image on the body without distortion; light simulation
+  with a visible lamp and different light sources; STL export
 
 ## Workflow
 

@@ -60,6 +60,20 @@ export interface HeightSettings {
   litho_hole_mm: number;
   litho_loop: boolean;
   litho_invert: boolean;
+  /** Breite des Bildes auf Kugel/Zylinder als Winkel (Grad); die Höhe folgt aus dem Seitenverhältnis */
+  litho_img_deg: number;
+  /** Bild um die Achse drehen (Grad) bzw. nach oben/unten schieben (-100..100 %) */
+  litho_img_x: number;
+  litho_img_y: number;
+  /** Bild rundum wiederholen statt einmal aufsetzen */
+  litho_repeat: boolean;
+  /** Höhe des Zylinders; 0 = aus dem Bild */
+  litho_height_mm: number;
+  /** Kugel: Öffnung oben mit Schraubdeckel für das Leuchtmittel */
+  litho_cap: boolean;
+  /** Wandstärke von Kugel/Zylinder außerhalb des Bildes */
+  litho_rest_mm: number;
+  litho_cap_mm: number;
 }
 
 export const DEFAULT_SETTINGS: HeightSettings = {
@@ -68,8 +82,9 @@ export const DEFAULT_SETTINGS: HeightSettings = {
   height_mode: "auto", brightness: 0, contrast: 1, gamma: 1, smoothing_px: 0, detail_mm: 0,
   border_mm: 0, border_height_mm: 0, shape: "rect", hole_mm: 0, rim_mm: 0, raise_mm: 0.6,
   clock_numbers: false, numbers_mm: 12, image_scale: 1, image_x: 0, image_y: 0,
-  litho: false, litho_form: "flat", litho_min_mm: 0.6, litho_max_mm: 3, litho_angle_deg: 120, litho_band_deg: 55,
+  litho: false, litho_form: "flat", litho_min_mm: 0.6, litho_max_mm: 2.6, litho_angle_deg: 120, litho_band_deg: 55,
   litho_hole_mm: 30, litho_loop: true, litho_invert: false,
+  litho_img_deg: 150, litho_img_x: 0, litho_img_y: 0, litho_repeat: false, litho_height_mm: 0, litho_cap: false, litho_cap_mm: 26, litho_rest_mm: 2.2,
 };
 
 export function normalizeSettings(d: Partial<HeightSettings> | undefined): HeightSettings {

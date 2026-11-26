@@ -150,7 +150,7 @@ export class ModelView {
   /** Lithophanie-Körper mit physikalisch angelehnter Beleuchtung: Lampe als Punktlicht (Abfall mit dem Abstand,
    *  schräger Lichtweg durch die Wand), Abschwächung je Farbkanal nach Wandstärke und TD, Streuung im Material,
    *  Glühen (Bloom), Filmic-Tonemapping und Lichtschein auf dem Tisch. */
-  private free: { lit: THREE.ShaderMaterial; plain: THREE.MeshStandardMaterial; ground: THREE.Mesh; on: boolean } | null = null;
+  private free: { lit: THREE.ShaderMaterial; plain: THREE.MeshStandardMaterial; ground: THREE.Mesh; on: boolean; lamp: THREE.Group; glow: THREE.MeshBasicMaterial; glowOn: THREE.Color } | null = null;
   private composer: EffectComposer | null = null;
   private bloom: UnrealBloomPass | null = null;
   private freeKey = "";
@@ -245,14 +245,45 @@ export class ModelView {
     }));
     ground.position.set(c.x, c.y, bb.min.z - 0.05);
     this.scene.add(ground);
-    this.free = { lit: litMat, plain, ground, on: lit };
+    // Sichtbare Lichtquelle: Glühlampe auf Fuß, LED-Teelicht, Lichterkette oder Leuchtrahmen
+    const lampGroup = new THREE.Group();
+    const glowCol = lin(o.light).multiplyScalar(2.2 * Math.max(0.5, o.intensity));
+    const glow = new THREE.MeshBasicMaterial({ color: glowCol });
+    const dark = new THREE.MeshBasicMaterial({ color: 0x121214 });
+    const zF = bb.min.z, add = (g: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, upright = true) => {
+      const me = new THREE.Mesh(g, mat); if (upright) me.rotation.x = Math.PI / 2; me.position.set(x, y, z); lampGroup.add(me); return me;
+    };
+    if (o.point) {
+      const br = o.behind ? Math.max(4, ref * 0.07) : Math.max(2.5, Math.min(sz.x, sz.y) * 0.07);
+      add(new THREE.SphereGeometry(br, 24, 16), glow, lamp.x, lamp.y, lamp.z, false);
+      // Fassung und Fuß bis auf den Tisch
+      add(new THREE.CylinderGeometry(br * 0.55, br * 0.6, br * 1.1, 20), dark, lamp.x, lamp.y, lamp.z - br * 1.3);
+      const stem = Math.max(0, lamp.z - br * 1.85 - zF);
+      if (stem > 1) add(new THREE.CylinderGeometry(br * 0.16, br * 0.16, stem, 12), dark, lamp.x, lamp.y, zF + stem / 2);
+      add(new THREE.CylinderGeometry(br * 1.5, br * 1.7, Math.min(3, br * 0.5), 28), dark, lamp.x, lamp.y, zF + Math.min(1.5, br * 0.25));
+    } else if (o.behind) {
+      // Leuchtrahmen bzw. Lichterkette hinter dem Bild
+      const py = bb.max.y + Math.max(6, sz.x * 0.08);
+      const panel = new THREE.Mesh(new THREE.PlaneGeometry(sz.x * 0.96, sz.z * 0.96), new THREE.MeshBasicMaterial({ color: lin(o.light).multiplyScalar(1.1 * Math.max(0.5, o.intensity)), side: THREE.DoubleSide }));
+      panel.rotation.x = Math.PI / 2; panel.position.set(c.x, py, c.z); lampGroup.add(panel);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(sz.x * 1.02, 3, sz.z * 1.02), dark); back.position.set(c.x, py + 2, c.z); lampGroup.add(back);
+    } else {
+      // Lichterkette im Körper: kleine Lichter auf einer Spirale
+      const n = 14, rr = Math.min(sz.x, sz.y) * 0.22, bs = Math.max(1.2, Math.min(sz.x, sz.y) * 0.022);
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1), a = t * Math.PI * 5;
+        add(new THREE.SphereGeometry(bs, 12, 8), glow, c.x + rr * Math.cos(a), c.y + rr * Math.sin(a), zF + sz.z * (0.15 + 0.6 * t), false);
+      }
+    }
+    this.scene.add(lampGroup);
+    this.free = { lit: litMat, plain, ground, on: lit, lamp: lampGroup, glow, glowOn: glowCol.clone() };
     this.bloomScale = Math.min(1.4, 0.55 + 0.25 * o.intensity);
     this.setLit(lit);
     const key = `${sz.x.toFixed(0)}|${sz.y.toFixed(0)}|${sz.z.toFixed(0)}`;
     if (key !== this.freeKey && this.controls) {
       this.freeKey = key;
       const d = Math.max(sz.x, sz.z, sz.y) * 1.9;
-      this.camera.position.set(c.x - d * 0.35, c.y - d, c.z + d * 0.3);
+      this.camera.position.set(c.x - d * (o.behind ? 0.35 : 0.12), c.y - d, c.z + d * (o.behind ? 0.3 : 0.15));
       this.controls.target.copy(c); this.controls.update();
       this.size = [0, 0]; this.framed = false;
     }
@@ -264,6 +295,8 @@ export class ModelView {
     this.free.on = lit;
     this.mesh.material = lit ? this.free.lit : this.free.plain;
     this.free.ground.visible = lit;
+    // ausgeschaltet bleibt die Lampe als matter Körper sichtbar
+    this.free.glow.color.copy(lit ? this.free.glowOn : new THREE.Color(0xd8d4cc));
     this.render();
   }
 
@@ -289,7 +322,7 @@ export class ModelView {
   }
 
   clear() {
-    if (this.free) { this.scene.remove(this.free.ground); this.free.ground.geometry.dispose(); this.free.lit.dispose(); this.free.plain.dispose(); }
+    if (this.free) { this.scene.remove(this.free.lamp); this.free.lamp.traverse((x) => { const me = x as THREE.Mesh; if (me.geometry) me.geometry.dispose(); }); this.scene.remove(this.free.ground); this.free.ground.geometry.dispose(); this.free.lit.dispose(); this.free.plain.dispose(); }
     this.free = null;
     if (this.mesh) { this.scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh = null; }
     if (this.meshOrig) { this.scene.remove(this.meshOrig); this.meshOrig.geometry.dispose(); this.meshOrig = null; }

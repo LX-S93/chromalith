@@ -85,7 +85,8 @@ const bilinear = (th: { w: number; h: number; t: Float32Array }, u: number, v: n
 };
 
 /** Baut den Körper. Das Relief liegt außen, die Innenseite (zum Licht) ist glatt. Z zeigt nach oben. */
-export function lithoMesh(th: LithoThickness, s: HeightSettings, maxSide = Infinity): LithoMesh {
+/** `mounted`: Deckel aufgeschraubt zeigen (Vorschau) statt daneben gestellt (Druck). */
+export function lithoMesh(th: LithoThickness, s: HeightSettings, maxSide = Infinity, mounted = false): LithoMesh {
   const form = s.litho_form, W = s.width_mm, aspect = th.h / th.w, hi = Math.max(s.litho_min_mm + 0.1, s.litho_max_mm);
   let nu: number, nv: number, wrap = false, note = "";
   /** Punkt bei (u, v) im Abstand d von der Innenfläche nach außen */
@@ -94,27 +95,65 @@ export function lithoMesh(th: LithoThickness, s: HeightSettings, maxSide = Infin
   let thickAt = (u: number, v: number, src: Src) => bilinear(src, u, v);
   const blurred: Src = { w: th.w, h: th.h, t: th.ts };
   const res = (len: number) => Math.max(2, Math.round(len / s.pixel_size_mm) + 1);
+  // Bild auf Kugel und Zylinder: Breite als Winkel, Höhe aus dem Seitenverhältnis – so wird nichts gestreckt.
+  const TAU = 2 * Math.PI;
+  const copies = s.litho_repeat ? Math.max(1, Math.round(360 / Math.min(360, Math.max(20, s.litho_img_deg)))) : 1;
+  const imgA = s.litho_repeat ? TAU / copies : (Math.min(360, Math.max(20, s.litho_img_deg)) * Math.PI) / 180;
+  const lon0 = (s.litho_img_x * Math.PI) / 180, offY = Math.min(1, Math.max(-1, s.litho_img_y / 100));
+  const wrapPi = (a: number) => a - TAU * Math.round(a / TAU);
+  /** weicher Übergang zur dicken (dunklen) Wand am Bildrand; du, dv = Abstand zum Rand in mm */
+  const rest = Math.min(hi, Math.max(0.4, s.litho_rest_mm));
+  const soften = (t: number, edge: number) => (edge < 1 ? rest + (t - rest) * Math.max(0, edge) : t);
+  let cap: { ro: number; zb: number; zt: number } | null = null;
   if (form === "cylinder") {
-    const R = Math.max(5, W / 2 - hi), H = 2 * Math.PI * (R + hi) * aspect;
-    nu = res(2 * Math.PI * (R + hi)) - 1; nv = res(H); wrap = true;
-    note = `Zylinder: Durchmesser außen ${W.toFixed(0)} mm, Höhe ${H.toFixed(0)} mm (aus dem Seitenverhältnis des Bildes). Das Bild läuft einmal rundum.`;
-    pos = (u, v, d, out, o) => { const a = -u * 2 * Math.PI, r = R + d; out[o] = r * Math.sin(a) * -1; out[o + 1] = -r * Math.cos(a); out[o + 2] = (1 - v) * H; };
-  } else if (form === "sphere") {
-    const R = Math.max(8, W / 2 - hi), band = (Math.min(80, Math.max(20, s.litho_band_deg)) * Math.PI) / 180;
-    const holeR = Math.max(0.35, s.litho_hole_mm / 2), topR = 0.35;
-    const latTop = Math.acos(Math.min(1, topR / R)), latBot = -Math.acos(Math.min(1, holeR / R));
-    nu = res(2 * Math.PI * (R + hi)) - 1; nv = res((latTop - latBot) * (R + hi)); wrap = true;
-    note = `Kugel: Durchmesser außen ${W.toFixed(0)} mm. Das Bild läuft einmal rundum; oben und unten ist die Wand dick und bleibt dunkel.` +
-      (s.litho_hole_mm > 0.7 ? ` Öffnung unten ${s.litho_hole_mm.toFixed(0)} mm für das Licht.` : "");
-    const lat = (v: number) => latTop + (latBot - latTop) * v;
-    pos = (u, v, d, out, o) => { const a = u * 2 * Math.PI, la = lat(v), r = R + d; out[o] = r * Math.cos(la) * Math.sin(a); out[o + 1] = -r * Math.cos(la) * Math.cos(a); out[o + 2] = r * Math.sin(la) + R + hi; };
+    const R = Math.max(5, W / 2 - hi), Ro = R + hi, Hi = Ro * imgA * aspect;
+    const H = s.litho_height_mm > 0 ? Math.max(10, s.litho_height_mm) : Hi, zc = H / 2 + offY * (H / 2);
+    nu = res(TAU * Ro) - 1; nv = res(H); wrap = true;
+    note = `Zylinder: Durchmesser außen ${W.toFixed(0)} mm, Höhe ${H.toFixed(0)} mm.` + (copies > 1 ? ` Das Bild läuft ${copies}-mal rundum.` : imgA >= TAU - 1e-6 ? " Das Bild läuft einmal rundum." : "");
+    pos = (u, v, d, out, o) => { const a = u * TAU, r = R + d; out[o] = r * Math.sin(a); out[o + 1] = -r * Math.cos(a); out[o + 2] = (1 - v) * H; };
+    const full = s.litho_repeat || imgA >= TAU - 1e-6;
     thickAt = (u, v, src) => {
-      const la = lat(v), k = (band - la) / (2 * band); // 0 = oberer Bildrand
-      if (k < 0 || k > 1) return hi;
-      // weicher Übergang zum dicken Rand
-      const edge = Math.min(k, 1 - k) * 2 * band * R, t = bilinear(src, u, k);
-      return edge < 1 ? hi + (t - hi) * edge : t;
+      let iu = wrapPi(u * TAU - lon0) / imgA + 0.5;
+      if (full) iu -= Math.floor(iu);
+      const iv = 0.5 - ((1 - v) * H - zc) / Hi;
+      if (iu < 0 || iu > 1 || iv < 0 || iv > 1) return rest;
+      const t = bilinear(src, iu, iv);
+      return soften(t, Math.min(full ? Infinity : Math.min(iu, 1 - iu) * imgA * Ro, Hi >= H && !offY ? Infinity : Math.min(iv, 1 - iv) * Hi));
     };
+  } else if (form === "sphere") {
+    const R = Math.max(8, W / 2 - hi);
+    const holeR = Math.max(0.35, s.litho_hole_mm / 2), topR = s.litho_cap ? Math.min(R * 0.7, Math.max(6, s.litho_cap_mm / 2)) : 0.35;
+    const latTop = Math.acos(Math.min(1, topR / R)), latBot = -Math.acos(Math.min(1, holeR / R));
+    nu = res(TAU * (R + hi)) - 1; nv = res((latTop - latBot) * (R + hi)); wrap = true;
+    note = `Kugel: Durchmesser außen ${W.toFixed(0)} mm.` + (copies > 1 ? ` Das Bild läuft ${copies}-mal rundum.` : "") + " Außerhalb des Bildes ist die Wand dick und bleibt dunkel." +
+      (s.litho_hole_mm > 0.7 ? ` Öffnung unten ${s.litho_hole_mm.toFixed(0)} mm.` : "") + (s.litho_cap ? ` Oben Öffnung ${(2 * topR).toFixed(0)} mm mit Schraubdeckel.` : "");
+    const lat = (v: number) => latTop + (latBot - latTop) * v;
+    pos = (u, v, d, out, o) => { const a = u * TAU, la = lat(v), r = R + d; out[o] = r * Math.cos(la) * Math.sin(a); out[o + 1] = -r * Math.cos(la) * Math.cos(a); out[o + 2] = r * Math.sin(la) + R + hi; };
+    const lat0 = offY * (Math.PI / 3), imgH = imgA * aspect;
+    // Mitte des Bildes und die Richtungen „rechts“ und „oben“ dort (für das Aufsetzen wie ein Aufkleber)
+    const C = [Math.cos(lat0) * Math.sin(lon0), -Math.cos(lat0) * Math.cos(lon0), Math.sin(lat0)];
+    const E = [Math.cos(lon0), Math.sin(lon0), 0], N = [-Math.sin(lat0) * Math.sin(lon0), Math.sin(lat0) * Math.cos(lon0), Math.cos(lat0)];
+    thickAt = (u, v, src) => {
+      const a = u * TAU, la = lat(v);
+      let iu: number, iv: number;
+      if (s.litho_repeat) {
+        // rundum: am Äquator maßstabsgetreu
+        iu = wrapPi(a - lon0) / imgA + 0.5; iu -= Math.floor(iu);
+        iv = 0.5 - (la - lat0) / imgH;
+      } else {
+        // einmal aufgesetzt: Abstände von der Bildmitte bleiben erhalten, dadurch wird das Bild nicht gestreckt
+        const P = [Math.cos(la) * Math.sin(a), -Math.cos(la) * Math.cos(a), Math.sin(la)];
+        const dot = Math.min(1, Math.max(-1, P[0] * C[0] + P[1] * C[1] + P[2] * C[2])), th0 = Math.acos(dot);
+        const k = th0 < 1e-6 ? 1 : th0 / Math.sin(th0);
+        if (th0 > Math.PI * 0.97) return rest;
+        iu = 0.5 + ((P[0] * E[0] + P[1] * E[1]) * k) / imgA;
+        iv = 0.5 - ((P[0] * N[0] + P[1] * N[1] + P[2] * N[2]) * k) / imgH;
+      }
+      if (iu < 0 || iu > 1 || iv < 0 || iv > 1) return rest;
+      const t = bilinear(src, iu, iv);
+      return soften(t, Math.min(s.litho_repeat ? Infinity : Math.min(iu, 1 - iu) * imgA * R, Math.min(iv, 1 - iv) * imgH * R));
+    };
+    if (s.litho_cap) cap = { ro: topR, zb: Math.sqrt(R * R - topR * topR) + R + hi, zt: 0 };
   } else if (form === "curved") {
     const A = (Math.min(300, Math.max(20, s.litho_angle_deg)) * Math.PI) / 180, R = W / A, H = W * aspect;
     nu = res(W); nv = res(H);
@@ -162,35 +201,93 @@ export function lithoMesh(th: LithoThickness, s: HeightSettings, maxSide = Infin
     p = j * cols + cols - 1; q = (j + 1) * cols + cols - 1; faces.push(p, q, q + n, p, q + n, p + n);
   }
   const mesh: LithoMesh = { vertices, faces: Uint32Array.from(faces), topIndex, thick, thickS, baseN, size: [0, 0, 0], note };
-  if (form === "sphere" && s.litho_loop) addLoop(mesh, hi + Math.max(8, W / 2 - hi), W);
+  if (form === "sphere") {
+    const Ro = hi + Math.max(8, W / 2 - hi);
+    if (cap) addCap(mesh, cap.ro, cap.zb, Ro, W, s.litho_loop, mounted);
+    else if (s.litho_loop) addLoop(mesh, W, 0, 2 * Ro - Math.max(1.2, W * 0.022) * 1.2);
+  }
   let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < mesh.vertices.length; i += 3) for (let c = 0; c < 3; c++) { const x = mesh.vertices[i + c]; if (x < mn[c]) mn[c] = x; if (x > mx[c]) mx[c] = x; }
   mesh.size = [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]];
   return mesh;
 }
 
-/** Aufhänge-Öse oben auf der Kugel: ein stehender Ring, der in die Kugel hineinragt (der Slicer verschmilzt beides). */
-function addLoop(m: LithoMesh, rOuter: number, W: number) {
-  const ringR = Math.max(3, W * 0.06), tube = Math.max(1.2, W * 0.022), seg = 28, sides = 12;
-  const cz = 2 * rOuter + ringR - tube * 1.2; // Mitte des Rings knapp über dem Pol
-  const base = m.vertices.length / 3;
-  const v: number[] = [], f: number[] = [];
-  for (let i = 0; i < seg; i++) for (let j = 0; j < sides; j++) {
-    const a = (i / seg) * 2 * Math.PI, b = (j / sides) * 2 * Math.PI, r = ringR + tube * Math.cos(b);
-    v.push(r * Math.cos(a), tube * Math.sin(b), cz + r * Math.sin(a));
-  }
-  for (let i = 0; i < seg; i++) for (let j = 0; j < sides; j++) {
-    const i2 = (i + 1) % seg, j2 = (j + 1) % sides;
-    const a = base + i * sides + j, b = base + i2 * sides + j, c = base + i2 * sides + j2, d = base + i * sides + j2;
-    f.push(a, c, b, a, d, c);
-  }
+/** Hängt ein eigenes, geschlossenes Teil an das Netz an (der Slicer verschmilzt überlappende Teile). */
+function addPart(m: LithoMesh, v: number[], f: number[]) {
+  const base = m.vertices.length / 3, n = v.length / 3;
   const nv = new Float32Array(m.vertices.length + v.length); nv.set(m.vertices); nv.set(v, m.vertices.length);
-  const nf = new Uint32Array(m.faces.length + f.length); nf.set(m.faces); nf.set(f, m.faces.length);
-  const nt = new Float32Array(m.thick.length + v.length / 3).fill(99); nt.set(m.thick);
+  const nf = new Uint32Array(m.faces.length + f.length); nf.set(m.faces); for (let i = 0; i < f.length; i++) nf[m.faces.length + i] = f[i] + base;
+  const nt = new Float32Array(m.thick.length + n).fill(99); nt.set(m.thick);
   const ns = new Float32Array(nt.length).fill(99); ns.set(m.thickS);
   const nb = new Float32Array(nt.length * 3); nb.set(m.baseN);
   for (let i = m.thick.length; i < nt.length; i++) nb[i * 3 + 2] = 1;
-  m.thickS = ns; m.baseN = nb;
-  const ti = new Int32Array(m.topIndex.length + v.length / 3).fill(-1); ti.set(m.topIndex);
-  m.vertices = nv; m.faces = nf; m.thick = nt; m.topIndex = ti;
+  const ti = new Int32Array(m.topIndex.length + n).fill(-1); ti.set(m.topIndex);
+  m.vertices = nv; m.faces = nf; m.thick = nt; m.thickS = ns; m.baseN = nb; m.topIndex = ti;
+}
+
+/** Aufhänge-Öse: ein stehender Ring um (cx, 0, cz + Ringradius), der unten in das Teil darunter hineinragt. */
+function addLoop(m: LithoMesh, W: number, cx: number, zBase: number) {
+  const ringR = Math.max(3, W * 0.06), tube = Math.max(1.2, W * 0.022), seg = 28, sides = 12;
+  const cz = zBase + ringR;
+  const v: number[] = [], f: number[] = [];
+  for (let i = 0; i < seg; i++) for (let j = 0; j < sides; j++) {
+    const a = (i / seg) * 2 * Math.PI, b = (j / sides) * 2 * Math.PI, r = ringR + tube * Math.cos(b);
+    v.push(cx + r * Math.cos(a), tube * Math.sin(b), cz + r * Math.sin(a));
+  }
+  for (let i = 0; i < seg; i++) for (let j = 0; j < sides; j++) {
+    const i2 = (i + 1) % seg, j2 = (j + 1) % sides;
+    const a = i * sides + j, b = i2 * sides + j, c = i2 * sides + j2, d = i * sides + j2;
+    f.push(a, c, b, a, d, c);
+  }
+  addPart(m, v, f);
+}
+
+/** Rohr um die Z-Achse durch (cx, 0) mit frei geformter Innen- und Außenwand (Radius je Winkel und Höhe); rin = null: massiv. */
+function tube(cx: number, z0: number, z1: number, rin: ((a: number, z: number) => number) | null, rout: (a: number, z: number) => number, seg = 96, nz = 24) {
+  const v: number[] = [], f: number[] = [], rows = nz + 1;
+  const ring = (r: (a: number, z: number) => number) => {
+    for (let j = 0; j < rows; j++) for (let i = 0; i < seg; i++) {
+      const a = (i / seg) * 2 * Math.PI, z = z0 + ((z1 - z0) * j) / nz, rr = r(a, z);
+      v.push(cx + rr * Math.cos(a), rr * Math.sin(a), z);
+    }
+  };
+  ring(rout);
+  const inner = rin ? seg * rows : -1;
+  if (rin) ring(rin); else { v.push(cx, 0, z0, cx, 0, z1); }
+  for (let i = 0; i < seg; i++) {
+    const i2 = (i + 1) % seg;
+    for (let j = 0; j < nz; j++) {
+      const a = j * seg + i, b = j * seg + i2, c = (j + 1) * seg + i2, d = (j + 1) * seg + i;
+      f.push(a, b, c, a, c, d);
+      if (rin) f.push(inner + a, inner + c, inner + b, inner + a, inner + d, inner + c);
+    }
+    const top = nz * seg;
+    if (rin) {
+      f.push(top + i, top + i2, inner + top + i2, top + i, inner + top + i2, inner + top + i); // oben
+      f.push(i2, i, inner + i, i2, inner + i, inner + i2); // unten
+    } else {
+      const cb = seg * rows, ct = cb + 1;
+      f.push(top + i, top + i2, ct, i2, i, cb);
+    }
+  }
+  return { v, f };
+}
+
+/** Schraubverschluss: Hals mit Außengewinde auf der Kugel und ein Deckel mit Innengewinde (auf Wunsch mit Öse).
+ *  Rundgewinde mit 3,5 mm Steigung und 0,35 mm Spiel – druckt ohne Stützen und lässt sich leicht drehen. */
+export const CAP = { wall: 2.4, depth: 1.3, pitch: 3.5, play: 0.35, turns: 8, lid: 2 };
+function addCap(m: LithoMesh, ro: number, zb: number, Ro: number, W: number, loop: boolean, mounted: boolean) {
+  const r0 = ro + CAP.wall, prof = (a: number, z: number) => 0.5 * (1 + Math.cos(2 * Math.PI * (z / CAP.pitch - a / (2 * Math.PI))));
+  // Oberkante: dort, wo das Gewinde aus der Kugel tritt, plus die Gewindelänge
+  const zOut = Math.sqrt(Math.max(0, Ro * Ro - (r0 + CAP.depth) ** 2)) + Ro, zt = zOut + CAP.turns;
+  const neck = tube(0, zb - 0.01, zt, () => ro, (a, z) => r0 + CAP.depth * prof(a, z) * Math.min(1, Math.max(0, (zt - z) / 1.2)), 96, Math.max(24, Math.round((zt - zb) / 0.3)));
+  addPart(m, neck.v, neck.f);
+  // Deckel: aufgeschraubt (Vorschau) oder daneben auf dem Druckbett, Öffnung nach unten
+  const rc = r0 + CAP.play, rOut = rc + CAP.depth + 2, hCap = CAP.turns - 0.8;
+  const cx = mounted ? 0 : Ro + rOut + 6, z0 = mounted ? zt - hCap : 0;
+  const ringPart = tube(cx, z0, z0 + hCap, (a, z) => rc + CAP.depth * prof(a, z - z0 + (mounted ? z0 : 0)), (a) => rOut + 0.35 * Math.cos(a * 24), 96, Math.round(hCap / 0.3));
+  addPart(m, ringPart.v, ringPart.f);
+  const lid = tube(cx, z0 + hCap - 0.2, z0 + hCap + CAP.lid, null, () => rOut, 96, 1);
+  addPart(m, lid.v, lid.f);
+  if (loop) addLoop(m, W, cx, z0 + hCap + CAP.lid - Math.max(1.2, W * 0.022) * 1.2);
 }

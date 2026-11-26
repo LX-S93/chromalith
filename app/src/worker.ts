@@ -94,7 +94,7 @@ self.onmessage = (ev: MessageEvent) => {
         const s = previewSettings(full, 700);
         const th = lithoThickness(image, s);
         const preview = toRGBA(lithoSimulate(th, light), th.w * th.h);
-        const m = lithoMesh(th, s, 420);
+        const m = lithoMesh(th, s, 420, true);
         const fullW = Math.round(full.width_mm / full.pixel_size_mm) + 1;
         result = { width: th.w, height: th.h, preview: preview.buffer, size: m.size, note: m.note, volume_mm3: meshVolume(m),
           triangles: Math.round((m.faces.length / 3) * Math.max(1, (fullW / th.w)) ** 2),

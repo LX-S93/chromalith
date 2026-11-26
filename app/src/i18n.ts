@@ -45,6 +45,8 @@ export function tr(s: string): string {
     out = p.out.replace(/\{\}/g, () => tr(m[++i] ?? ""));
     break;
   }
+  // mehrere Sätze hintereinander (z. B. Hinweise zum Körper): Satz für Satz
+  if (out === s && /[.!?] \S/.test(s)) { const parts = s.split(/(?<=[.!?]) /); if (parts.length > 1) out = parts.map((x) => tr(x)).join(" "); }
   if (cache.size < 5000) cache.set(s, out);
   return out;
 }

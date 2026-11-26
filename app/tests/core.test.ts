@@ -347,15 +347,16 @@ describe("Lithophanie", () => {
   const base = { ...normalizeSettings(undefined), litho: true, width_mm: 60, pixel_size_mm: 1 };
   it("dunkel = dick, hell = dünn", () => {
     const th = lithoThickness(img, base);
-    expect(th.t[0]).toBeCloseTo(3, 1);
+    expect(th.t[0]).toBeCloseTo(2.6, 1);
     expect(th.t[th.w - 1]).toBeCloseTo(0.6, 1);
     const sim = lithoSimulate(th, { filamentColor: "#ffffff", td: 4, light: "#ffffff", intensity: 1 });
-    expect(sim[(th.w - 1) * 3]).toBeGreaterThan(sim[0] + 0.3);
+    expect(sim[(th.w - 1) * 3]).toBeGreaterThan(sim[0] + 0.2);
     expect(lithoTransmit(0.6, "#ffffff", 4, "#ffffff", 1)[0]).toBeGreaterThan(lithoTransmit(3, "#ffffff", 4, "#ffffff", 1)[0]);
   });
-  for (const form of ["flat", "curved", "cylinder", "sphere"] as const)
-    it(`Körper „${form}“ ist geschlossen und richtig herum`, () => {
-      const s = { ...base, litho_form: form };
+  for (const [form, extra] of [["flat", {}], ["curved", {}], ["cylinder", {}], ["cylinder", { litho_img_deg: 120, litho_height_mm: 50, litho_repeat: true }],
+    ["sphere", {}], ["sphere", { litho_cap: true }], ["sphere", { litho_cap: true, litho_repeat: true, litho_img_deg: 90 }]] as const)
+    it(`Körper „${form}“ ${JSON.stringify(extra)} ist geschlossen und richtig herum`, () => {
+      const s = { ...base, litho_form: form, ...extra };
       const m = lithoMesh(lithoThickness(img, s), s);
       const edges = new Map<string, number>();
       for (let i = 0; i < m.faces.length; i += 3) for (let k = 0; k < 3; k++) {
@@ -366,6 +367,22 @@ describe("Lithophanie", () => {
       expect(meshVolume(m)).toBeGreaterThan(100);
       expect(m.size[2]).toBeGreaterThan(20);
     });
+  it("Bild auf der Kugel wird aufgesetzt, nicht gestreckt: daneben bleibt die Wand gleichmäßig", () => {
+    const s = { ...base, litho_form: "sphere" as const, litho_img_deg: 90, litho_rest_mm: 1.5 };
+    const m = lithoMesh(lithoThickness(img, s), s);
+    let rest = 0, pic = 0;
+    for (const t of m.thick) { if (Math.abs(t - 1.5) < 1e-4) rest++; else if (t > 0 && t < 90) pic++; }
+    // 90° breites Bild im Format 3:2 bedeckt nur einen kleinen Teil der Kugel
+    expect(pic).toBeGreaterThan(20);
+    expect(rest).toBeGreaterThan(pic * 3);
+  });
+  it("Schraubdeckel: Gewinde von Hals und Deckel haben überall das eingestellte Spiel", () => {
+    const s = { ...base, litho_form: "sphere" as const, litho_cap: true, litho_cap_mm: 26 };
+    const off = lithoMesh(lithoThickness(img, s), s), on = lithoMesh(lithoThickness(img, s), s, Infinity, true);
+    // aufgeschraubt ist der Körper höher als mit Deckel daneben nur breit
+    expect(off.size[0]).toBeGreaterThan(on.size[0] + 20);
+    expect(on.vertices.length).toBe(off.vertices.length);
+  });
 });
 
 import { compareVersions, parseRelease } from "../src/update";

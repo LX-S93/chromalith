@@ -2,6 +2,20 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.17.0 – 2026-11-26
+
+- **Lithophane ornaments and lampshades: the image is no longer stretched.** On spheres and cylinders the image
+  is now placed with its real proportions. New sliders set the **image size on the body**, **rotate** it around
+  and move it **up/down**, independently of the size of the body; whatever extends beyond the body is cut off.
+  Optionally the image is **repeated all around**. Cylinders can get their own height.
+- **Screw cap for sphere ornaments:** an opening at the top with a printed thread and a removable cap (which
+  carries the hanging loop), so the light can be inserted and replaced. In the STL the cap sits next to the sphere.
+- **A real lamp in the 3D view:** a bulb on a stand behind flat and curved lithophanes, a light inside cylinders
+  and spheres, fairy lights or a light panel depending on the chosen light source.
+- **Thinner walls:** the default for the thickest (darkest) point is now 2.6 mm instead of 3 mm, and the wall
+  beside the image on spheres and cylinders has its own setting (default 2.2 mm) instead of always using the
+  maximum. Existing projects keep their values.
+
 ## 0.16.0 – 2026-11-26
 
 - **Updates from inside the app.** Chromalith checks for a new release on start and offers to install it;
