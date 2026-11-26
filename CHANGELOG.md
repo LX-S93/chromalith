@@ -2,6 +2,12 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.21.0 – 2026-11-26
+
+- New app icon.
+- 14 more built-in examples on the welcome screen, now sorted into groups: colour reliefs, lithophanes (dog, kitten, hands, couple, best friends), moments (family, hot-air balloons, heart tree) and tech/neon (circuit board, neon city, cyborg, retro computer, motorbike).
+- Light preview of lithophanes now has a dark wall as backdrop instead of plain black.
+
 ## 0.20.2 – 2026-11-26
 
 - Updating with unsaved changes: instead of refusing, the update dialog now offers "Save and update",

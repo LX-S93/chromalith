@@ -300,6 +300,21 @@ export class ModelView {
     this.render();
   }
 
+  // Hintergrund der Lichtvorschau: dunkle Wand mit Holzbord, bildfüllend zugeschnitten
+  private sceneTex: THREE.Texture | null = null;
+  private backdrop(aspect: number): THREE.Texture | null {
+    if (!this.sceneTex) {
+      this.sceneTex = new THREE.TextureLoader().load("./examples/scene.jpg", () => this.render());
+      this.sceneTex.colorSpace = THREE.SRGBColorSpace;
+    }
+    const t = this.sceneTex, img = t.image as { width?: number; height?: number } | undefined;
+    if (!img?.width || !img.height) return null;
+    const ia = img.width / img.height;
+    if (aspect > ia) { t.repeat.set(1, ia / aspect); t.offset.set(0, (1 - ia / aspect) * 0.35); }
+    else { t.repeat.set(aspect / ia, 1); t.offset.set((1 - aspect / ia) / 2, 0); }
+    return t;
+  }
+
   private renderFree() {
     const r = this.renderer!;
     if (!this.free!.on) { r.setScissorTest(false); r.render(this.scene, this.camera); return; }
@@ -315,10 +330,11 @@ export class ModelView {
     this.composer.setSize(box.width, box.height);
     this.bloom!.strength = 0.55 * this.bloomScale;
     const bg = this.scene.background, tm = r.toneMapping, ex = r.toneMappingExposure;
-    this.scene.background = new THREE.Color(0x020203);
+    this.scene.background = this.backdrop(box.width / Math.max(1, box.height)) ?? new THREE.Color(0x020203);
+    this.scene.backgroundIntensity = 1;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
     this.composer.render();
-    this.scene.background = bg; r.toneMapping = tm; r.toneMappingExposure = ex;
+    this.scene.backgroundIntensity = 1; this.scene.background = bg; r.toneMapping = tm; r.toneMappingExposure = ex;
   }
 
   clear() {

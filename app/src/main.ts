@@ -22,7 +22,7 @@ import { ImageView } from "./ui/view2d";
 import { ModelView } from "./ui/view3d";
 import { fileSuffix, lang, num, setLang, tr, trLines, watchDom } from "./i18n";
 import { autoCheckForUpdate, checkForUpdate } from "./update";
-import { EXAMPLES, type Example } from "./examples";
+import { EXAMPLES, EXAMPLE_GROUPS, type Example } from "./examples";
 
 const VERSION = pkg.version;
 watchDom();
@@ -130,7 +130,7 @@ menu.append(button(null, () => menu.classList.toggle("open"), { icon: "more", cl
 document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target as Node)) menu.classList.remove("open"); });
 
 const topbar = h("header", { class: "topbar" },
-  h("div", { class: "brand" }, h("img", { src: "./icon.svg", alt: "" }), "Chromalith", h("small", null, VERSION)),
+  h("div", { class: "brand" }, h("img", { src: "./icon.png", alt: "" }), "Chromalith", h("small", null, VERSION)),
   button("Bild öffnen", openImage, { icon: "image", title: "Bild öffnen (Strg+O)" }),
   button("Projekt öffnen", openProject, { icon: "folder", title: "Projekt öffnen (Strg+Umschalt+O)" }),
   button("Speichern", () => saveProject(false), { icon: "save", title: "Projekt speichern (Strg+S)" }),
@@ -320,7 +320,7 @@ const dropzone = h("div", { class: "dropzone" }, h("div", { class: "card welcome
     h("div", { style: { display: "flex", gap: "8px", marginTop: "14px" } },
       button("Bild öffnen", openImage, { icon: "image", cls: "primary" }), button("Projekt öffnen", openProject, { icon: "folder" }))),
   h("div", { class: "welcome-title" }, "Oder mit einem Beispiel starten"),
-  h("div", { class: "examples" }, ...EXAMPLES.map(exampleCard))));
+  ...EXAMPLE_GROUPS.flatMap((g) => [h("div", { class: "welcome-group" }, g), h("div", { class: "examples" }, ...EXAMPLES.filter((e) => e.group === g).map(exampleCard))])));
 const views = h("div", { class: "views" }, viewPreview.el, viewOriginal.el, view3d.el, analysisEl, dropzone, busy);
 const tabs = h("div", { class: "tabs" });
 const TABS: [string, HTMLElement][] = [["Vorschau", viewPreview.el], ["Original", viewOriginal.el], ["3D", view3d.el], ["Farbanalyse", analysisEl]];
@@ -923,7 +923,7 @@ function chooseLanguage() {
 
 function about() {
   const close = modal("Über Chromalith", h("div", { style: { lineHeight: "1.6" } },
-    h("div", { style: { display: "flex", gap: "14px", alignItems: "center" } }, h("img", { src: "./icon.svg", width: 48, height: 48 }),
+    h("div", { style: { display: "flex", gap: "14px", alignItems: "center" } }, h("img", { src: "./icon.png", width: 48, height: 48 }),
       h("div", null, h("b", null, `Chromalith ${VERSION}`), h("div", { class: "hint" }, "Farbige Reliefbilder aus Filament-Schichten für den 3D-Druck."))),
     h("p", null, "Eigenständige Entwicklung. Bild öffnen, Filamente stapeln, Wechsel-Schichten festlegen und als STL mit Farbwechsel-Liste exportieren."),
     h("p", { class: "hint" }, "Tastenkürzel: Strg+O Bild · Strg+Umschalt+O Projekt · Strg+S Speichern · Strg+E Export · Strg+L Bibliothek · Strg+N Neu"),
