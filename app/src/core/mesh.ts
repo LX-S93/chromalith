@@ -37,7 +37,7 @@ export function heightmapToMesh(hm: HeightMap): Mesh {
     const r = remap[i];
     if (r < 0) continue;
     const g = i % n, x = g % w, y = Math.floor(g / w);
-    vertices[r * 3] = x * ps; vertices[r * 3 + 1] = (h - 1 - y) * ps; vertices[r * 3 + 2] = i < n ? heights[g] : 0;
+    vertices[r * 3] = x * ps; vertices[r * 3 + 1] = (h - 1 - y) * ps; vertices[r * 3 + 2] = i < n ? heights[g] : hm.bottom ? hm.bottom[g] : 0;
     topIndex[r] = i < n ? g : -1;
   }
   return { vertices, faces: Uint32Array.from(faces, (v) => remap[v]), topIndex };

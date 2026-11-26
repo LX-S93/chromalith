@@ -436,3 +436,44 @@ describe("Release-Hinweise", () => {
     expect(pickNotes("- Only English", "de")).toBe("- Only English");
   });
 });
+
+describe("Motiv ragt über die Form", () => {
+  // weißer Hintergrund, dunkler Balken von oben bis zur Mitte: ragt oben über den Kreis hinaus
+  const w = 60, h = 60, px = new Uint8Array(w * h * 4).fill(255);
+  for (let y = 2; y < 34; y++) for (let x = 26; x < 34; x++) { const o = (y * w + x) * 4; px[o] = px[o + 1] = px[o + 2] = 20; }
+  const img = fromRGBA8(w, h, px);
+  const base = { ...DEFAULT_SETTINGS, width_mm: 11.8, pixel_size_mm: 0.2, shape: "circle" as const, breakout_frame: 60 };
+  const closed = (hm: ReturnType<typeof buildHeightmap>) => {
+    const m = heightmapToMesh(hm), edges = new Map<number, number>(), nv = m.vertices.length / 3;
+    for (let i = 0; i < m.faces.length; i += 3) for (let k = 0; k < 3; k++) {
+      const a = m.faces[i + k], b = m.faces[i + ((k + 1) % 3)];
+      edges.set(a * nv + b, (edges.get(a * nv + b) ?? 0) + 1);
+    }
+    for (const [key] of edges) { const a = Math.floor(key / nv), b = key % nv; if (edges.get(b * nv + a) !== 1) return false; }
+    return true;
+  };
+  it("aufliegend: Motiv außerhalb des Kreises bleibt, Hintergrund fällt weg", () => {
+    const hm = buildHeightmap(img, { ...base, breakout: "attached" }, { mode: "dark_high" });
+    expect(hm.mask![5 * w + 30]).toBe(1); // Balken über dem Kreis
+    expect(hm.mask![5 * w + 5]).toBe(0); // Hintergrund außerhalb
+    expect(hm.mask![30 * w + 20]).toBe(1); // Hintergrund im Kreis
+    expect(hm.bottom ?? null).toBeNull();
+    expect(closed(hm)).toBe(true);
+  });
+  it("schwebend: Unterseite angehoben, Netz bleibt geschlossen", () => {
+    const hm = buildHeightmap(img, { ...base, breakout: "floating", breakout_float_mm: 0.8 }, { mode: "dark_high" });
+    const z0 = hm.bottom![5 * w + 30];
+    expect(z0).toBeGreaterThan(0.7);
+    expect(hm.heights[5 * w + 30]).toBeGreaterThanOrEqual(z0 + 0.39);
+    expect(hm.bottom![30 * w + 30]).toBe(0); // im Kreis liegt alles auf
+    expect(closed(hm)).toBe(true);
+    const m = heightmapToMesh(hm);
+    expect(meshVolume(m)).toBeGreaterThan(0);
+  });
+  it("aus: unverändert ohne Unterseite", () => {
+    const hm = buildHeightmap(img, { ...base, breakout: "off" }, { mode: "dark_high" });
+    expect(hm.bottom ?? null).toBeNull();
+    expect(hm.mask![5 * w + 30]).toBe(1); // voller Kreis wie bisher
+    expect(hm.mask![2 * w + 2]).toBe(0);
+  });
+});

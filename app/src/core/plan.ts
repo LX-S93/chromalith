@@ -59,11 +59,15 @@ export function simulate(hm: HeightMap, stops: ColorStop[], heights: Float32Arra
   if (!segs.length) return out.fill(0.5);
   const lins = segs.map((s) => hexToRgb(s.filament.color).map(srgbToLinear));
   const ks = segs.map((s) => OPACITY_K / Math.max(s.filament.td, 1e-3));
+  const bot = heights === hm.heights ? hm.bottom ?? null : null;
   for (let i = 0; i < n; i++) {
-    const h = heights[i];
-    let r = lins[0][0], g = lins[0][1], b = lins[0][2];
-    for (let k = 0; k < segs.length; k++) {
-      const t = Math.min(h, segs[k].z1) - segs[k].z0;
+    const h = heights[i], z0 = bot ? bot[i] : 0;
+    // schwebende Teile: die Schichten unter der Unterseite fehlen, die Farbe beginnt beim ersten vorhandenen Filament
+    let k0 = 0;
+    if (z0 > 0) while (k0 < segs.length - 1 && segs[k0].z1 <= z0) k0++;
+    let r = lins[k0][0], g = lins[k0][1], b = lins[k0][2];
+    for (let k = k0; k < segs.length; k++) {
+      const t = Math.min(h, segs[k].z1) - Math.max(segs[k].z0, z0);
       if (t <= 0) break;
       const a = 1 - Math.exp(-ks[k] * t);
       r += (lins[k][0] - r) * a; g += (lins[k][1] - g) * a; b += (lins[k][2] - b) * a;

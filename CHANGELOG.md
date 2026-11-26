@@ -2,6 +2,18 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.24.0 – 2026-11-26
+
+- New: the motif can extend beyond the shape (section "Shape"). The round or rectangular shape becomes smaller than the image and parts of the motif, such as ears, stick out over its edge. "Attached" gives the protruding parts their own base plate and prints without supports; "Floating" leaves air below them and needs supports from the slicer.
+- The background is detected automatically (transparent, or the plain colour at the image edge) with an adjustable tolerance; shape size and position can be moved behind the motif.
+- Note for floating parts: colours can differ there because the lower filaments of the stack are missing; the preview shows the real result.
+
+<!-- de
+- Neu: Das Motiv kann über die Form hinausragen (Abschnitt „Form“). Die runde oder rechteckige Form wird kleiner als das Bild, und Teile des Motivs wie Ohren stehen über den Rand. „Aufliegend“ gibt den überstehenden Teilen eine eigene Grundplatte und druckt ohne Stützen; „Schwebend“ lässt Luft darunter und braucht Stützen aus dem Slicer.
+- Der Hintergrund wird automatisch erkannt (transparent oder die einfarbige Fläche am Bildrand), die Toleranz ist einstellbar; Größe und Lage der Form lassen sich hinter dem Motiv verschieben.
+- Hinweis zu schwebenden Teilen: Die Farben können dort abweichen, weil die unteren Filamente des Stapels fehlen; die Vorschau zeigt das echte Ergebnis.
+-->
+
 ## 0.23.0 – 2026-11-26
 
 - Sliders: a changed value is marked with a dot and a coloured bar from its default, the default is shown as a tick on the track, and each value can be reset (↺ or double-click on the slider). Each section gets a "Reset" button for all its changed values.

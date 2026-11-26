@@ -2,7 +2,7 @@
 import "./style.css";
 import pkg from "../package.json";
 import {
-  DEFAULT_SETTINGS, HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
+  BREAKOUTS, DEFAULT_SETTINGS, HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
   parseProject, serializeLibrary, serializeProject, starterLibrary, toRGBA8, validate, type ColorStop, type Filament,
   LITHO_FORMS, materialDensity, filamentAtLayer, layerTopZ, simulate, type HeightSettings, type Island, type Raster,
 } from "./core";
@@ -96,9 +96,10 @@ function setSetting<K extends keyof HeightSettings>(k: K, v: HeightSettings[K]) 
   state.settings[k] = v;
   markDirty();
   if (k === "height_mode") syncMode();
-  if (k === "shape" || k === "clock_numbers") syncShapeFields();
+  if (k === "shape" || k === "clock_numbers" || k === "breakout") syncShapeFields();
   schedule();
 }
+let breakoutHint: HTMLElement;
 const sl = (k: keyof HeightSettings, label: string, lo: number, hi: number, step: number, unit = "mm", tip?: string, dec?: number) =>
   (fields[k] = sliderField(label, lo, hi, step, unit, (v) => setSetting(k, v as any), tip, dec)).el;
 
@@ -156,6 +157,14 @@ const left = h("aside", { class: "left" },
     sl("image_scale", "Motivgröße", 0.2, 2, 0.01, "×", "Verkleinert oder vergrößert nur das Motiv. Umriss und Größe des Drucks bleiben gleich, z. B. damit bei einer Uhr Platz für die Ziffern bleibt. Die freie Fläche bekommt die Randfarbe des Bildes."),
     sl("image_x", "Motiv nach rechts", -50, 50, 0.5, "%", "Verschiebt das Motiv waagerecht innerhalb der Form.", 1),
     sl("image_y", "Motiv nach unten", -50, 50, 0.5, "%", "Verschiebt das Motiv senkrecht innerhalb der Form.", 1),
+    (fields.breakout = selectField("Motiv ragt über die Form", BREAKOUTS, (v) => setSetting("breakout", v as any),
+      "Die Form wird kleiner als das Bild, und das Motiv darf darüber hinausragen (z. B. Ohren über den Kreis). Aufliegend: die überstehenden Teile bekommen eine eigene Grundplatte, druckbar ohne Stützen. Schwebend: unter den überstehenden Teilen ist Luft, im Slicer Stützen einschalten. Braucht ein Motiv vor einfarbigem oder transparentem Hintergrund.")).el,
+    sl("breakout_frame", "Formgröße", 30, 100, 1, "%", "Größe der Form im Verhältnis zum Bild. Was vom Motiv darüber hinausgeht, ragt heraus.", 0),
+    sl("breakout_x", "Form nach rechts", -40, 40, 0.5, "%", "Verschiebt die Form hinter dem Motiv waagerecht.", 1),
+    sl("breakout_y", "Form nach unten", -40, 40, 0.5, "%", "Verschiebt die Form hinter dem Motiv senkrecht.", 1),
+    sl("breakout_tol", "Hintergrund-Toleranz", 2, 60, 1, "", "Wie stark eine Farbe von der Randfarbe des Bildes abweichen darf und trotzdem als Hintergrund gilt. Höher, wenn Hintergrundreste stehen bleiben; niedriger, wenn Teile des Motivs fehlen.", 0),
+    sl("breakout_float_mm", "Schwebehöhe", 0.2, 2, 0.04, "mm", "So hoch über dem Druckbett beginnt die Unterseite der schwebenden Teile. Je niedriger, desto dicker und farbtreuer bleiben sie.", 2),
+    (breakoutHint = h("div", { class: "hint" }, "Schwebende Teile brauchen Stützen: im Slicer „Stützen“ einschalten, am besten nur auf dem Druckbett. Die Farben können dort abweichen, weil die unteren Filamente des Stapels fehlen. Die Vorschau zeigt das.")),
     (fields.clock_numbers = switchField("Uhr-Ziffern 1–12", (v) => setSetting("clock_numbers", v), "Setzt die Ziffern 1 bis 12 erhaben auf das Bild.")).el,
     sl("numbers_mm", "Ziffernhöhe", 4, 40, 0.5, "mm", "Schriftgröße der Uhr-Ziffern.", 1),
     sl("raise_mm", "Rand/Ziffern über Bild", 0.08, 3, 0.08, "mm", "So weit stehen Rand und Ziffern über der höchsten Stelle des Bildes.")),
@@ -486,6 +495,9 @@ function syncMode(effective?: string) {
 }
 function syncShapeFields() {
   const round = state.settings.shape === "circle";
+  const bo = state.settings.breakout;
+  for (const k of ["breakout_frame", "breakout_x", "breakout_y", "breakout_tol"] as const) fields[k]!.el.style.display = bo !== "off" ? "" : "none";
+  fields.breakout_float_mm!.el.style.display = breakoutHint.style.display = bo === "floating" ? "" : "none";
   fields.numbers_mm!.el.style.display = state.settings.clock_numbers ? "" : "none";
   fields.clock_numbers!.el.title = round ? "" : "Ziffern werden auf dem größten Kreis im Bild verteilt.";
 }

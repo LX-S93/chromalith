@@ -1,5 +1,5 @@
 /** Bild -> Höhenkarte (mm), auf Druckschichten quantisiert, mit Form (rund, Loch, Rand, Ziffern). */
-import { SRGB_TO_LINEAR_8 } from "./color";
+import { SRGB_TO_LINEAR_8, srgbToLab } from "./color";
 import { crop, gaussianBlur, medianFilter, minFeature, resize, type Raster } from "./raster";
 
 export const LUMA_METHODS = {
@@ -22,6 +22,8 @@ export type EffectiveMode = Exclude<HeightMode, "auto">;
 
 export const SHAPES = { rect: "Rechteck", circle: "Rund" } as const;
 export type Shape = keyof typeof SHAPES;
+export const BREAKOUTS = { off: "Aus", attached: "Aufliegend (ohne Stützen)", floating: "Schwebend (mit Stützen)" } as const;
+export type Breakout = keyof typeof BREAKOUTS;
 
 export interface HeightSettings {
   width_mm: number;
@@ -50,6 +52,16 @@ export interface HeightSettings {
   image_scale: number;
   image_x: number;
   image_y: number;
+  /** Motiv ragt über die Form hinaus: aus, aufliegend (eigene Grundplatte) oder schwebend (Luft darunter, braucht Stützen) */
+  breakout: Breakout;
+  /** Größe der Form in % der Bildbreite und ihr Versatz in % */
+  breakout_frame: number;
+  breakout_x: number;
+  breakout_y: number;
+  /** Farbtoleranz, bis zu der ein Punkt noch als Hintergrund gilt */
+  breakout_tol: number;
+  /** schwebend: Höhe der Unterseite über dem Druckbett */
+  breakout_float_mm: number;
   /** Lithophanie statt Farbrelief */
   litho: boolean;
   litho_form: "flat" | "curved" | "cylinder" | "sphere";
@@ -82,6 +94,7 @@ export const DEFAULT_SETTINGS: HeightSettings = {
   height_mode: "auto", brightness: 0, contrast: 1, gamma: 1, smoothing_px: 0, detail_mm: 0.4,
   border_mm: 0, border_height_mm: 0, shape: "rect", hole_mm: 0, rim_mm: 0, raise_mm: 0.6,
   clock_numbers: false, numbers_mm: 12, image_scale: 1, image_x: 0, image_y: 0,
+  breakout: "off", breakout_frame: 75, breakout_x: 0, breakout_y: 0, breakout_tol: 14, breakout_float_mm: 0.6,
   litho: false, litho_form: "flat", litho_min_mm: 0.6, litho_max_mm: 2.6, litho_angle_deg: 120, litho_band_deg: 55,
   litho_hole_mm: 30, litho_loop: true, litho_invert: false,
   litho_img_deg: 150, litho_img_x: 0, litho_img_y: 0, litho_repeat: false, litho_height_mm: 0, litho_cap: false, litho_cap_mm: 26, litho_rest_mm: 2.2,
@@ -117,6 +130,10 @@ export interface HeightMap {
   rgb: Float32Array; // Originalfarben je Punkt (3 pro Punkt)
   border_px: number;
   mask: Uint8Array | null; // 1 = Material vorhanden
+  /** Unterseite je Punkt in mm (schwebende Teile); fehlt = überall 0 */
+  bottom?: Float32Array | null;
+  /** Motiv (1) gegenüber Hintergrund (0), nur während des Aufbaus */
+  subject?: Uint8Array | null;
   /** Farbinseln: zusätzliche Wechsel und Schichtzahl des Reliefs ohne Inseln */
   islandStops?: import("./plan").ColorStop[];
   restLayers?: number;
@@ -301,6 +318,38 @@ export function calmRegions(heights: Float32Array, cont: Float32Array, w: number
   }
 }
 
+/** Trennt Motiv und Hintergrund: transparente Stellen sind Hintergrund; sonst alles, was vom Bildrand aus
+ *  erreichbar ist und der Randfarbe ähnelt (Abstand im Lab-Raum unter `tol`). Liefert 1 = Motiv. */
+export function subjectMask(rgb: Float32Array, alpha: Float32Array, w: number, h: number, tol: number): Uint8Array {
+  const n = w * h, bg = new Uint8Array(n);
+  let clear = 0;
+  for (let i = 0; i < n; i++) if (alpha[i] < 0.5) { bg[i] = 1; clear++; }
+  if (clear < n * 0.02) {
+    const lab = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) srgbToLab(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2], lab, i * 3);
+    const edge: number[] = [];
+    for (let x = 0; x < w; x++) edge.push(x, (h - 1) * w + x);
+    for (let y = 1; y < h - 1; y++) edge.push(y * w, y * w + w - 1);
+    const med = (c: number) => { const v = edge.map((i) => lab[i * 3 + c]).sort((a, b) => a - b); return v[v.length >> 1]; };
+    const L = med(0), A = med(1), B = med(2), t2 = tol * tol;
+    const like = (i: number) => (lab[i * 3] - L) ** 2 + (lab[i * 3 + 1] - A) ** 2 + (lab[i * 3 + 2] - B) ** 2 < t2;
+    const queue = new Int32Array(n);
+    let head = 0, tail = 0;
+    for (const i of edge) if (!bg[i] && like(i)) { bg[i] = 1; queue[tail++] = i; }
+    while (head < tail) {
+      const i = queue[head++], x = i % w;
+      for (let k = 0; k < 4; k++) {
+        const j = k === 0 ? i - 1 : k === 1 ? i + 1 : k === 2 ? i - w : i + w;
+        if (j < 0 || j >= n || (k === 0 && x === 0) || (k === 1 && x === w - 1) || bg[j] || !like(j)) continue;
+        bg[j] = 1; queue[tail++] = j;
+      }
+    }
+  }
+  // Sprenkel und ausgefranste Ränder glätten
+  const f = medianFilter(Float32Array.from(bg, (v) => 1 - v), w, h, 5);
+  return Uint8Array.from(f, (v) => (v > 0.5 ? 1 : 0));
+}
+
 export function buildHeightmap(img: Raster, s: HeightSettings, opt: BuildOptions): HeightMap {
   validate(s);
   const { w, h, rgb, alpha } = prepareImage(img, s);
@@ -339,7 +388,9 @@ export function buildHeightmap(img: Raster, s: HeightSettings, opt: BuildOptions
   calmLayers(heights, w, h, s.layer_height_mm, Math.max(1, Math.min(2, Math.round(0.4 / s.pixel_size_mm))));
   let hm: HeightMap = { width: w, height: h, heights, pixel_size_mm: s.pixel_size_mm, base_layer_mm: s.base_layer_mm,
     layer_height_mm: s.layer_height_mm, rgb, border_px: 0, mask: null };
-  if (s.border_mm > 0) hm = addBorder(hm, s);
+  if (s.breakout !== "off") hm.subject = subjectMask(rgb, alpha, w, h, s.breakout_tol);
+  else if (s.border_mm > 0) hm = addBorder(hm, s); // Rahmen und Herausragen schließen sich aus
+  if (s.breakout !== "off") { applyBreakout(hm, s, opt.renderDigits); hm.subject = null; return hm; }
   applyShape(hm, s, opt.renderDigits);
   return hm;
 }
@@ -354,6 +405,59 @@ function addBorder(hm: HeightMap, s: HeightSettings): HeightMap {
     rgb.set(hm.rgb.subarray(y * hm.width * 3, (y + 1) * hm.width * 3), ((y + b) * W + b) * 3);
   }
   return { ...hm, width: W, height: H, heights, rgb, border_px: b };
+}
+
+/** Form (Kreis oder Rechteck) kleiner als das Bild, das Motiv darf darüber hinausragen. Der Umriss ist die
+ *  Form plus alle Motivteile, die mit ihr zusammenhängen. Schwebend: außerhalb der Form beginnt das Material
+ *  erst in `breakout_float_mm` Höhe (Unterseite eben, damit Stützen sauber anliegen). */
+export function applyBreakout(hm: HeightMap, s: HeightSettings, renderDigits?: DigitRenderer): void {
+  const { width: w, height: h, pixel_size_mm: ps } = hm, n = w * h, sub = hm.subject!;
+  const k = Math.min(1, Math.max(0.2, s.breakout_frame / 100));
+  const cx = (w - 1) / 2 + (s.breakout_x / 100) * w, cy = (h - 1) / 2 + (s.breakout_y / 100) * h;
+  const radius = (Math.min(w - 1, h - 1) * k) / 2, hx = ((w - 1) * k) / 2, hy = ((h - 1) * k) / 2;
+  const rim = s.rim_mm / ps, hole = s.hole_mm / 2 / ps;
+  const top = quantize(maxZ(hm) + s.raise_mm, hm.base_layer_mm, hm.layer_height_mm);
+  const frame = new Uint8Array(n), mask = new Uint8Array(n), queue = new Int32Array(n);
+  let head = 0, tail = 0;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x, dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy);
+      const inside = s.shape === "circle" ? r <= radius : Math.abs(dx) <= hx && Math.abs(dy) <= hy;
+      if (!inside) continue;
+      frame[i] = 1;
+      if (hole > 0 && r < hole) continue;
+      mask[i] = 1; queue[tail++] = i;
+      const onRim = rim > 0 && (s.shape === "circle" ? r >= radius - rim : Math.abs(dx) >= hx - rim || Math.abs(dy) >= hy - rim);
+      // der Rand läuft hinter dem Motiv durch: wo das Motiv liegt, bleibt dessen Relief
+      if (onRim && !sub[i]) hm.heights[i] = top;
+    }
+  // Motivteile außerhalb der Form, die an der Form hängen
+  while (head < tail) {
+    const i = queue[head++], x = i % w;
+    for (let d = 0; d < 4; d++) {
+      const j = d === 0 ? i - 1 : d === 1 ? i + 1 : d === 2 ? i - w : i + w;
+      if (j < 0 || j >= n || (d === 0 && x === 0) || (d === 1 && x === w - 1) || mask[j] || frame[j] || !sub[j]) continue;
+      mask[j] = 1; queue[tail++] = j;
+    }
+  }
+  if (s.clock_numbers && renderDigits && s.shape === "circle") {
+    const sizePx = Math.max(6, Math.round(s.numbers_mm / ps)), rr = radius - Math.max(rim, 0) - (s.numbers_mm * 0.75) / ps;
+    const dm = renderDigits(w, h, Array.from({ length: 12 }, (_, q) => {
+      const a = ((q + 1) * 30 * Math.PI) / 180;
+      return { text: String(q + 1), x: cx + rr * Math.sin(a), y: cy - rr * Math.cos(a) };
+    }), sizePx);
+    for (let i = 0; i < n; i++) if (dm[i] && mask[i] && frame[i] && !sub[i]) hm.heights[i] = top;
+  }
+  if (s.breakout === "floating") {
+    const z0 = quantize(Math.max(s.breakout_float_mm, hm.base_layer_mm), hm.base_layer_mm, hm.layer_height_mm);
+    const minTop = quantize(z0 + 0.4, hm.base_layer_mm, hm.layer_height_mm);
+    const bottom = new Float32Array(n);
+    let any = false;
+    for (let i = 0; i < n; i++) if (mask[i] && !frame[i]) { bottom[i] = z0; any = true; if (hm.heights[i] < minTop) hm.heights[i] = minTop; }
+    hm.bottom = any ? bottom : null;
+  }
+  for (let i = 0; i < n; i++) if (!mask[i]) hm.heights[i] = 0;
+  hm.mask = mask;
 }
 
 export function applyShape(hm: HeightMap, s: HeightSettings, renderDigits?: DigitRenderer): void {
@@ -400,19 +504,23 @@ export function downsample(hm: HeightMap, maxSide: number): HeightMap {
   const W = Math.floor(hm.width / f), H = Math.floor(hm.height / f);
   const heights = new Float32Array(W * H), rgb = new Float32Array(W * H * 3);
   const mask = hm.mask ? new Uint8Array(W * H) : null;
+  const bottom = hm.bottom ? new Float32Array(W * H) : null;
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
-      let hs = 0, r = 0, g = 0, b = 0, m = 0;
+      let hs = 0, r = 0, g = 0, b = 0, m = 0, bz = 0, bn = 0;
       for (let dy = 0; dy < f; dy++)
         for (let dx = 0; dx < f; dx++) {
           const i = (y * f + dy) * hm.width + x * f + dx;
           hs += hm.heights[i]; r += hm.rgb[i * 3]; g += hm.rgb[i * 3 + 1]; b += hm.rgb[i * 3 + 2];
           if (hm.mask) m += hm.mask[i];
+          if (bottom && hm.bottom![i] > bz) bz = hm.bottom![i];
+          if (bottom && hm.bottom![i] > 0) bn++;
         }
       const o = y * W + x, nn = f * f;
       heights[o] = quantize(hs / nn, hm.base_layer_mm, hm.layer_height_mm);
       rgb[o * 3] = r / nn; rgb[o * 3 + 1] = g / nn; rgb[o * 3 + 2] = b / nn;
       if (mask) mask[o] = m / nn > 0.5 ? 1 : 0;
+      if (bottom) bottom[o] = bn / nn > 0.5 ? bz : 0;
     }
-  return { ...hm, width: W, height: H, heights, rgb, mask, pixel_size_mm: hm.pixel_size_mm * f, border_px: Math.floor(hm.border_px / f) };
+  return { ...hm, width: W, height: H, heights, rgb, mask, bottom, pixel_size_mm: hm.pixel_size_mm * f, border_px: Math.floor(hm.border_px / f) };
 }
