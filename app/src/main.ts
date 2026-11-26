@@ -169,7 +169,7 @@ const left = h("aside", { class: "left" },
       "Automatisch: Bunte Filamente im Stapel = farbtreu. Sonst: Ist das oberste Filament dunkler als das unterste, werden dunkle Bildstellen hoch.")).el,
     (fields.luma_method = selectField("Helligkeit", LUMA_METHODS, (v) => setSetting("luma_method", v as any), "Wie aus den Bildfarben die Helligkeit berechnet wird. „Wahrnehmung“ passt fast immer.")).el,
     (fields.linearize = switchField("sRGB linearisieren", (v) => setSetting("linearize", v), "Rechnet die Helligkeit physikalisch statt nach Bildschirmwerten. Macht Mitteltöne dunkler.")).el,
-    sl("detail_mm", "Mindestdetail", 0, 2, 0.1, "mm", "Bildpunkte, die kleiner sind als dieser Wert, werden entfernt (Median-Filter). Verhindert einzelne Zacken im Relief. 0 = aus.", 1),
+    sl("detail_mm", "Mindestdetail", 0, 2, 0.1, "mm", "Linien und Punkte, die schmaler sind als dieser Wert, lassen sich nicht drucken: einzelne Spitzen werden entfernt, feine Linien auf diese Breite verbreitert. Empfohlen: Düsenbreite (0,4 mm). 0 = aus.", 1),
     sl("smoothing_px", "Glätten", 0, 10, 0.25, "px", "Weichzeichnen des Bildes vor der Höhenberechnung."),
     sl("brightness", "Helligkeit +/-", -1, 1, 0.02, "", "Hellt das Bild vor der Berechnung auf oder dunkelt es ab."),
     sl("contrast", "Kontrast", 0, 4, 0.05, "", "Über 1 = stärkere Unterschiede zwischen Hell und Dunkel."),
@@ -425,6 +425,7 @@ const stack = new StackPanel({
   },
   auto: autoDistribute,
   suggest: suggestFilaments,
+  blackWhite,
   loadSet,
   pick: async () => (await openLibrary(libHost, true))[0] ?? null,
   edit: (f) => editFilament({ ...f }),
@@ -635,6 +636,18 @@ function suggestFilaments() {
     stack.render(); markDirty(); rebuild();
     toast("Vorgeschlagenes Filament-Set übernommen.", "ok");
   });
+}
+
+/** Ein Klick: Schwarz-Weiß-Relief aus einem beliebigen (auch farbigen) Bild. */
+async function blackWhite() {
+  if (!state.image) { toast("Bitte zuerst ein Bild öffnen."); return; }
+  const stops = defaultStops();
+  if (stops.length < 2) { toast("In der Bibliothek fehlen die generischen Filamente Schwarz, Grau und Weiß.", "err"); return; }
+  state.stops.splice(0, state.stops.length, ...stops);
+  state.settings.height_mode = "auto";
+  fields.height_mode!.set("auto"); syncMode();
+  await autoDistribute();
+  toast("Schwarz-Weiß-Relief erstellt. Rückgängig mit Strg+Z.", "ok");
 }
 
 function invertHeight() {

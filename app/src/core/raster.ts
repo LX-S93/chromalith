@@ -116,3 +116,70 @@ export function medianFilter(a: Float32Array, w: number, h: number, size: number
     }
   return out;
 }
+
+/** Minimum (erode) bzw. Maximum über ein k×k-Fenster; `back` legt das Fenster auf die andere Seite, damit
+ *  Öffnen/Schließen bei geradem k nicht verschieben. */
+function minmax(a: Float32Array, w: number, h: number, k: number, max: boolean, back: boolean): Float32Array {
+  const lo = back ? -(k - 1) : 0, hi = back ? 0 : k - 1;
+  const tmp = new Float32Array(a.length), out = new Float32Array(a.length);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let v = a[y * w + x];
+      for (let d = lo; d <= hi; d++) { const u = a[y * w + Math.min(w - 1, Math.max(0, x + d))]; if (max ? u > v : u < v) v = u; }
+      tmp[y * w + x] = v;
+    }
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let v = tmp[y * w + x];
+      for (let d = lo; d <= hi; d++) { const u = tmp[Math.min(h - 1, Math.max(0, y + d)) * w + x]; if (max ? u > v : u < v) v = u; }
+      out[y * w + x] = v;
+    }
+  return out;
+}
+
+/** Zusammenhängende Flecken (8er-Nachbarschaft) mit weniger als minArea Punkten auf 0 setzen. */
+function dropSmall(r: Float32Array, w: number, h: number, eps: number, minArea: number): void {
+  const seen = new Uint8Array(r.length), queue = new Int32Array(r.length);
+  for (let s0 = 0; s0 < r.length; s0++) {
+    if (seen[s0] || r[s0] <= eps) continue;
+    let head = 0, tail = 0;
+    queue[tail++] = s0; seen[s0] = 1;
+    while (head < tail) {
+      const i = queue[head++], x = i % w, y = (i / w) | 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const j = yy * w + xx;
+          if (!seen[j] && r[j] > eps) { seen[j] = 1; queue[tail++] = j; }
+        }
+    }
+    if (tail < minArea) for (let q = 0; q < tail; q++) r[queue[q]] = 0;
+  }
+}
+
+/** Druckbare Mindestbreite: Erhebungen und Rillen, die schmaler als k Punkte sind, lassen sich nicht drucken.
+ *  Einzelne Spitzen und kurze Stummel werden entfernt, längere feine Linien (Haare, Konturen) bleiben erhalten
+ *  und werden auf k Punkte verbreitert. `eps` ist der Höhenunterschied, ab dem etwas als Detail zählt. */
+export function minFeature(a: Float32Array, w: number, h: number, k: number, eps: number): Float32Array {
+  if (k < 2) return a;
+  const open = (src: Float32Array, up: boolean) => minmax(minmax(src, w, h, k, !up, false), w, h, k, up, true);
+  const pass = (src: Float32Array, up: boolean): Float32Array => {
+    // up: schmale Erhebungen (Öffnen), sonst schmale Vertiefungen (Schließen)
+    const base = open(src, up);
+    const res = new Float32Array(src.length);
+    for (let i = 0; i < res.length; i++) res[i] = up ? src[i] - base[i] : base[i] - src[i];
+    dropSmall(res, w, h, eps, 6 * k);
+    // Linie in voller Höhe um k-1 Punkte nach rechts/unten verbreitern; nie über ihre eigene Höhe hinaus
+    const far = up ? -Infinity : Infinity;
+    const line = new Float32Array(src.length);
+    for (let i = 0; i < line.length; i++) line[i] = res[i] > eps ? src[i] : far;
+    const wide = minmax(line, w, h, k, up, true);
+    const out = new Float32Array(src.length);
+    for (let i = 0; i < out.length; i++)
+      out[i] = res[i] > eps ? src[i] : wide[i] === far ? base[i] : up ? Math.max(base[i], wide[i]) : Math.min(base[i], wide[i]);
+    return out;
+  };
+  // zum Schluss reines Öffnen: was jetzt noch schmaler als k hochsteht, ist ein Rest und nicht druckbar
+  return open(pass(pass(a, true), false), true);
+}

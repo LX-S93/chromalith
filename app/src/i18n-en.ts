@@ -508,4 +508,9 @@ export const EN: Record<string, string> = {
   "Cyborg": "Cyborg",
   "Retro-Computer": "Retro computer",
   "Motorrad": "Motorbike",
+  "Schwarz-Weiß": "Black and white",
+  "Macht aus dem Bild mit einem Klick ein Schwarz-Weiß-Relief: Stapel Schwarz, Grau, Weiß, Höhe aus der Bildhelligkeit, Wechsel automatisch verteilt.": "Turns the image into a black-and-white relief in one click: stack of black, grey and white, height from image brightness, changes distributed automatically.",
+  "In der Bibliothek fehlen die generischen Filamente Schwarz, Grau und Weiß.": "The generic filaments black, grey and white are missing from the library.",
+  "Schwarz-Weiß-Relief erstellt. Rückgängig mit Strg+Z.": "Black-and-white relief created. Undo with Ctrl+Z.",
+  "Linien und Punkte, die schmaler sind als dieser Wert, lassen sich nicht drucken: einzelne Spitzen werden entfernt, feine Linien auf diese Breite verbreitert. Empfohlen: Düsenbreite (0,4 mm). 0 = aus.": "Lines and dots narrower than this cannot be printed: single spikes are removed, fine lines are widened to this width. Recommended: nozzle width (0.4 mm). 0 = off.",
 };

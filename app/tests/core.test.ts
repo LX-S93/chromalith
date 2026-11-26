@@ -408,3 +408,22 @@ describe("Update", () => {
     expect(parseRelease({ tag_name: "nightly", assets: [] })).toBeNull();
   });
 });
+
+describe("Druckbare Mindestbreite", () => {
+  it("entfernt Einzelspitzen und verbreitert feine Linien", () => {
+    const w = 40, h = 40, px = new Uint8Array(w * h * 4).fill(255);
+    const dark = (x: number, y: number) => { const o = (y * w + x) * 4; px[o] = px[o + 1] = px[o + 2] = 0; };
+    dark(8, 8); // einzelner Punkt
+    for (let y = 5; y < 35; y++) dark(25, y); // 1 Punkt breite Linie
+    const img = fromRGBA8(w, h, px);
+    const base = { ...DEFAULT_SETTINGS, width_mm: 7.8, pixel_size_mm: 0.2, height_mode: "dark_high" as const };
+    const raw = buildHeightmap(img, { ...base, detail_mm: 0 }, { mode: "dark_high" });
+    const fix = buildHeightmap(img, { ...base, detail_mm: 0.4 }, { mode: "dark_high" });
+    const lo = Math.min(...fix.heights);
+    expect(raw.heights[8 * w + 8]).toBeGreaterThan(lo + 1);
+    expect(fix.heights[8 * w + 8]).toBeLessThan(lo + 0.2); // höchstens ein flacher Buckel
+    const width = (hm: typeof fix) => [...hm.heights.subarray(20 * w, 21 * w)].filter((v) => v > lo + 0.3).length;
+    expect(width(raw)).toBe(1);
+    expect(width(fix)).toBeGreaterThanOrEqual(2); // Linie bleibt, aber druckbar breit
+  });
+});

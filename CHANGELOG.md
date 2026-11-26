@@ -2,6 +2,12 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.22.0 – 2026-11-26
+
+- Reliefs are printable by default: the new default "minimum detail" of 0.4 mm removes single spikes and stubs, widens fine lines (whiskers, outlines) to a printable width instead of deleting them, and in brightness mode rounds thin features into low ridges instead of tall thin walls. Projects saved earlier keep their own setting; set "Mindestdetail / Minimum detail" to 0.4 mm there to get the same result.
+- New "Black and white" button in the filament stack: turns any image into a black/grey/white relief in one click.
+- Removed the backdrop image from the lithophane light preview again; it was not recognisable.
+
 ## 0.21.0 – 2026-11-26
 
 - New app icon.

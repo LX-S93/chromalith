@@ -1,6 +1,6 @@
 /** Bild -> Höhenkarte (mm), auf Druckschichten quantisiert, mit Form (rund, Loch, Rand, Ziffern). */
 import { SRGB_TO_LINEAR_8 } from "./color";
-import { crop, gaussianBlur, medianFilter, resize, type Raster } from "./raster";
+import { crop, gaussianBlur, medianFilter, minFeature, resize, type Raster } from "./raster";
 
 export const LUMA_METHODS = {
   rec709: "Wahrnehmung (Rec. 709)",
@@ -79,7 +79,7 @@ export interface HeightSettings {
 export const DEFAULT_SETTINGS: HeightSettings = {
   width_mm: 100, pixel_size_mm: 0.2, min_height_mm: 0.48, max_height_mm: 2.24,
   base_layer_mm: 0.2, layer_height_mm: 0.08, luma_method: "rec709", linearize: false,
-  height_mode: "auto", brightness: 0, contrast: 1, gamma: 1, smoothing_px: 0, detail_mm: 0,
+  height_mode: "auto", brightness: 0, contrast: 1, gamma: 1, smoothing_px: 0, detail_mm: 0.4,
   border_mm: 0, border_height_mm: 0, shape: "rect", hole_mm: 0, rim_mm: 0, raise_mm: 0.6,
   clock_numbers: false, numbers_mm: 12, image_scale: 1, image_x: 0, image_y: 0,
   litho: false, litho_form: "flat", litho_min_mm: 0.6, litho_max_mm: 2.6, litho_angle_deg: 120, litho_band_deg: 55,
@@ -315,11 +315,13 @@ export function buildHeightmap(img: Raster, s: HeightSettings, opt: BuildOptions
       const bl = gaussianBlur(ch, w, h, s.smoothing_px);
       for (let i = 0; i < n; i++) src[i * 3 + c] = adjustTone(bl[i], s);
     }
+    // Median: an Farbkanten treffen Mischpunkte oft eine ganz andere Höhe; solche 1-Punkt-Säume müssen weg
     heights = medianFilter(opt.colorFn(src, w, h), w, h, detailKernel(s));
   } else {
     let lum = luminance(rgb, s.luma_method, s.linearize);
-    lum = medianFilter(lum, w, h, detailKernel(s));
-    lum = gaussianBlur(lum, w, h, s.smoothing_px);
+    // kein Median: feine Linien (Haare, Konturen) sollen bleiben; minFeature macht sie unten druckbar
+    // Grundglättung in halber Mindestbreite: feine Linien werden zu flachen, runden Rippen statt zu hohen Wänden
+    lum = gaussianBlur(lum, w, h, Math.hypot(s.smoothing_px, s.detail_mm > 0 ? (0.5 * s.detail_mm) / s.pixel_size_mm : 0));
     heights = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const t = adjustTone(lum[i], s);
@@ -327,6 +329,7 @@ export function buildHeightmap(img: Raster, s: HeightSettings, opt: BuildOptions
       heights[i] = s.min_height_mm + relief * (s.max_height_mm - s.min_height_mm);
     }
   }
+  if (s.detail_mm > 0) heights = minFeature(heights, w, h, Math.max(2, Math.round(s.detail_mm / s.pixel_size_mm)), s.layer_height_mm * 1.5);
   for (let i = 0; i < n; i++) {
     if (alpha[i] < 0.5) heights[i] = s.min_height_mm;
   }
