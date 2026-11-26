@@ -9,11 +9,24 @@ the colour mix, and exports the model together with a colour change plan. It als
 Free and open source (MIT). Windows desktop app; the same code also runs in a browser.
 The interface follows your system language (English or German).
 
-![Colour relief preview](docs/relief.png)
+![Chromalith: a sunset turned into a six-filament colour relief](docs/hero.jpg)
 
-| 3D view | Lithophane with light simulation |
-| --- | --- |
-| ![3D view](docs/relief-3d.png) | ![Lithophane](docs/lithophane.png) |
+## Showcase
+
+Picture in, printable multi-colour relief out. Left: the original image. Right: the 3D model Chromalith builds
+from it, coloured only by stacking a handful of filaments (here picked automatically by "Suggest filaments").
+
+![Tiger: original and filament relief](docs/showcase-tiger.jpg)
+![Koi and wave: original and filament relief](docs/showcase-koi.jpg)
+![Astronaut: original and filament relief](docs/showcase-astronaut.jpg)
+![Mountain sunset: original and filament relief](docs/showcase-sunset.jpg)
+
+**Lithophanes** from the same tool: flat picture, sphere ornament with screw cap, and lampshade cylinder,
+shown in the built-in light simulation.
+
+![Wolf lithophane: original, flat, sphere ornament, cylinder](docs/showcase-lithophane.jpg)
+
+<sub>All showcase images were generated for this project and are free to use.</sub>
 
 ## Download
 
