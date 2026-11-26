@@ -122,11 +122,14 @@ export function lithoMesh(th: LithoThickness, s: HeightSettings, maxSide = Infin
     };
   } else if (form === "sphere") {
     const R = Math.max(8, W / 2 - hi);
-    const holeR = Math.max(0.35, s.litho_hole_mm / 2), topR = s.litho_cap ? Math.min(R * 0.7, Math.max(6, s.litho_cap_mm / 2)) : 0.35;
+    // Mit Schraubdeckel: oben die Öffnung fürs Licht (plus Gewindetiefe), unten ein gleich großer flacher Boden als Standfläche
+    const capR = Math.min(R * 0.7 - CAP.depth, Math.max(6, s.litho_cap_mm / 2));
+    const topR = s.litho_cap ? capR + CAP.depth : 0.35, holeR = s.litho_cap ? topR : Math.max(0.35, s.litho_hole_mm / 2);
     const latTop = Math.acos(Math.min(1, topR / R)), latBot = -Math.acos(Math.min(1, holeR / R));
     nu = res(TAU * (R + hi)) - 1; nv = res((latTop - latBot) * (R + hi)); wrap = true;
     note = `Kugel: Durchmesser außen ${W.toFixed(0)} mm.` + (copies > 1 ? ` Das Bild läuft ${copies}-mal rundum.` : "") + " Außerhalb des Bildes ist die Wand dick und bleibt dunkel." +
-      (s.litho_hole_mm > 0.7 ? ` Öffnung unten ${s.litho_hole_mm.toFixed(0)} mm.` : "") + (s.litho_cap ? ` Oben Öffnung ${(2 * topR).toFixed(0)} mm mit Schraubdeckel.` : "");
+      (s.litho_cap ? ` Oben Öffnung ${(2 * capR).toFixed(0)} mm mit Innengewinde, Deckel mit Öse als zweites Teil, unten flacher Boden fürs Licht. In der STL steht die Kugel auf dem Kopf: so drucken.`
+        : s.litho_hole_mm > 0.7 ? ` Öffnung unten ${s.litho_hole_mm.toFixed(0)} mm.` : "");
     const lat = (v: number) => latTop + (latBot - latTop) * v;
     pos = (u, v, d, out, o) => { const a = u * TAU, la = lat(v), r = R + d; out[o] = r * Math.cos(la) * Math.sin(a); out[o + 1] = -r * Math.cos(la) * Math.cos(a); out[o + 2] = r * Math.sin(la) + R + hi; };
     const lat0 = offY * (Math.PI / 3), imgH = imgA * aspect;
@@ -153,7 +156,7 @@ export function lithoMesh(th: LithoThickness, s: HeightSettings, maxSide = Infin
       const t = bilinear(src, iu, iv);
       return soften(t, Math.min(s.litho_repeat ? Infinity : Math.min(iu, 1 - iu) * imgA * R, Math.min(iv, 1 - iv) * imgH * R));
     };
-    if (s.litho_cap) cap = { ro: topR, zb: Math.sqrt(R * R - topR * topR) + R + hi, zt: 0 };
+    if (s.litho_cap) cap = { ro: capR, zb: Math.sqrt(R * R - topR * topR), zt: 0 };
   } else if (form === "curved") {
     const A = (Math.min(300, Math.max(20, s.litho_angle_deg)) * Math.PI) / 180, R = W / A, H = W * aspect;
     nu = res(W); nv = res(H);
@@ -273,21 +276,35 @@ function tube(cx: number, z0: number, z1: number, rin: ((a: number, z: number) =
   return { v, f };
 }
 
-/** Schraubverschluss: Hals mit Außengewinde auf der Kugel und ein Deckel mit Innengewinde (auf Wunsch mit Öse).
- *  Rundgewinde mit 3,5 mm Steigung und 0,35 mm Spiel – druckt ohne Stützen und lässt sich leicht drehen. */
+/** Schraubverschluss der Kugel. Oben sitzt ein Kragen mit Innengewinde, unten ein flacher Boden gleicher Größe, auf dem
+ *  das Licht steht. Der Deckel ist ein eigenes Teil: Stopfen mit Außengewinde, Rand und (auf Wunsch) Öse.
+ *  Gedruckt wird die Kugel auf dem Kopf, also auf der ebenen Gewindeseite; der Deckel steht auf dem Gewinde, die
+ *  Unterseite seines Rands ist 45° schräg und braucht keine Stützen. Rundgewinde, 3,5 mm Steigung, 0,35 mm Spiel. */
 export const CAP = { wall: 2.4, depth: 1.3, pitch: 3.5, play: 0.35, turns: 8, lid: 2 };
-function addCap(m: LithoMesh, ro: number, zb: number, Ro: number, W: number, loop: boolean, mounted: boolean) {
-  const r0 = ro + CAP.wall, prof = (a: number, z: number) => 0.5 * (1 + Math.cos(2 * Math.PI * (z / CAP.pitch - a / (2 * Math.PI))));
-  // Oberkante: dort, wo das Gewinde aus der Kugel tritt, plus die Gewindelänge
-  const zOut = Math.sqrt(Math.max(0, Ro * Ro - (r0 + CAP.depth) ** 2)) + Ro, zt = zOut + CAP.turns;
-  const neck = tube(0, zb - 0.01, zt, () => ro, (a, z) => r0 + CAP.depth * prof(a, z) * Math.min(1, Math.max(0, (zt - z) / 1.2)), 96, Math.max(24, Math.round((zt - zb) / 0.3)));
-  addPart(m, neck.v, neck.f);
-  // Deckel: aufgeschraubt (Vorschau) oder daneben auf dem Druckbett, Öffnung nach unten
-  const rc = r0 + CAP.play, rOut = rc + CAP.depth + 2, hCap = CAP.turns - 0.8;
-  const cx = mounted ? 0 : Ro + rOut + 6, z0 = mounted ? zt - hCap : 0;
-  const ringPart = tube(cx, z0, z0 + hCap, (a, z) => rc + CAP.depth * prof(a, z - z0 + (mounted ? z0 : 0)), (a) => rOut + 0.35 * Math.cos(a * 24), 96, Math.round(hCap / 0.3));
-  addPart(m, ringPart.v, ringPart.f);
-  const lid = tube(cx, z0 + hCap - 0.2, z0 + hCap + CAP.lid, null, () => rOut, 96, 1);
+function addCap(m: LithoMesh, ro: number, zin: number, Ro: number, W: number, loop: boolean, mounted: boolean) {
+  const prof = (a: number, z: number) => 0.5 * (1 + Math.cos(2 * Math.PI * (z / CAP.pitch - a / (2 * Math.PI))));
+  const rc = ro + CAP.depth + CAP.wall; // Außenradius des Kragens
+  // ebene Oberkante knapp über der Kugel, der Kragen reicht von dort nach innen
+  const zt = Ro + Math.sqrt(Math.max(0, Ro * Ro - rc * rc)) + 1.5, zc = zt - CAP.turns;
+  const collar = tube(0, zc, zt, (a, z) => ro + CAP.depth * prof(a, z), () => rc, 96, Math.round(CAP.turns / 0.3));
+  addPart(m, collar.v, collar.f);
+  // flacher Boden: füllt die untere Öffnung, Oberseite = Standfläche fürs Licht
+  const rIn = ro + CAP.depth, zFloorTop = Ro - zin, zFloorBot = Ro - (Ro * zin) / (Ro - (Ro - Math.hypot(zin, rIn)));
+  const floor = tube(0, Math.min(zFloorBot, zFloorTop - 1.6), zFloorTop, null, () => (rIn * Ro) / Math.hypot(zin, rIn) + 0.2, 96, 1);
+  addPart(m, floor.v, floor.f);
+  let dx = 0, z0 = zt - CAP.turns + 0.8;
+  if (!mounted) {
+    // Druckstellung: Kugel auf den Kopf (halbe Drehung um X), Gewindeseite auf das Bett; Deckel daneben
+    for (let i = 0; i < m.vertices.length; i += 3) { m.vertices[i + 1] = -m.vertices[i + 1]; m.vertices[i + 2] = zt - m.vertices[i + 2]; }
+    for (let i = 0; i < m.baseN.length; i += 3) { m.baseN[i + 1] = -m.baseN[i + 1]; m.baseN[i + 2] = -m.baseN[i + 2]; }
+    dx = Ro + rc + 8; z0 = 0;
+  }
+  // Deckel: Stopfen mit Außengewinde (hohl), darüber der Rand mit schräger Unterseite, obenauf die Öse
+  const hPlug = CAP.turns - 0.8, rp = ro - CAP.play, rf = rc + 1;
+  const plug = tube(dx, z0, z0 + hPlug + 0.2, () => Math.max(2, rp - CAP.wall), (a, z) => rp + CAP.depth * prof(a, z - z0 + (mounted ? z0 : 0)) * Math.min(1, Math.max(0.15, (z - z0) / 1.2)), 96, Math.round(hPlug / 0.3));
+  addPart(m, plug.v, plug.f);
+  const hCh = rf - rp, zl = z0 + hPlug;
+  const lid = tube(dx, zl, zl + hCh + CAP.lid, null, (a, z) => Math.min(rf + 0.3 * Math.cos(a * 24), rp + (z - zl)), 96, Math.max(8, Math.round((hCh + CAP.lid) / 0.4)));
   addPart(m, lid.v, lid.f);
-  if (loop) addLoop(m, W, cx, z0 + hCap + CAP.lid - Math.max(1.2, W * 0.022) * 1.2);
+  if (loop) addLoop(m, W, dx, zl + hCh + CAP.lid - Math.max(1.2, W * 0.022) * 1.2);
 }

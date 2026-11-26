@@ -2,6 +2,14 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.20.0 – 2026-11-26
+
+- **Sphere ornament redesigned for printing.** With "Screw cap on top" the sphere now has an internal thread at
+  the top, sized for the light, and a flat floor of the same size at the bottom where the light stands. The cap
+  with the hanging loop is a separate second part with a matching external thread and a 45° underside, so
+  neither part needs supports. In the STL the sphere stands upside down on its flat threaded side with the cap
+  next to it, ready to print.
+
 ## 0.19.0 – 2026-11-26
 
 - **Welcome screen with built-in examples.** Seven colour reliefs (tiger, sunset, koi and wave, astronaut, fox,

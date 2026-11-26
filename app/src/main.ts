@@ -260,7 +260,7 @@ const lithoSection = section("Lithophanie", true,
   sl("litho_height_mm", "Höhe des Zylinders (0 = wie Bild)", 0, 300, 1, "mm", "Eigene Höhe für den Zylinder. Bei 0 ist er genau so hoch wie das Bild.", 0),
   sl("litho_hole_mm", "Öffnung unten Ø", 0, 60, 1, "mm", "Öffnung für LED-Teelicht oder Lichterkette. Die Kugel wird mit der Öffnung nach unten gedruckt. 0 = geschlossen.", 0),
   lightSizeSel.el, lightSize.el,
-  (fields.litho_cap = switchField("Schraubdeckel oben", (v) => { setSetting("litho_cap", v); if (v) applyLightSize(store.get("lithoLightMm", 38)); syncLitho(); }, "Öffnung oben mit Gewinde und abschraubbarem Deckel, um das Leuchtmittel einzusetzen und zu tauschen. Der Deckel liegt in der STL neben der Kugel und trägt die Öse.")).el,
+  (fields.litho_cap = switchField("Schraubdeckel oben", (v) => { setSetting("litho_cap", v); if (v) applyLightSize(store.get("lithoLightMm", 38)); syncLitho(); }, "Oben eine Öffnung mit Innengewinde in der Größe des Leuchtmittels, dazu ein Deckel mit Öse als zweites Teil. Unten bekommt die Kugel einen flachen Boden, auf dem das Licht steht. In der STL steht die Kugel auf dem Kopf auf der Gewindeseite, der Deckel daneben: genau so drucken.")).el,
   sl("litho_cap_mm", "Öffnung oben Ø", 12, 60, 1, "mm", "Lichte Weite der oberen Öffnung. 26 mm passt für kleine LED-Lichter und Lichterketten, ein LED-Teelicht braucht etwa 40 mm.", 0),
   (fields.litho_loop = switchField("Öse zum Aufhängen", (v) => setSetting("litho_loop", v), "Setzt oben einen Ring für Faden oder Haken auf die Kugel.")).el,
   (fields.litho_invert = switchField("Umkehren (Negativ)", (v) => setSetting("litho_invert", v), "Helle Stellen dick statt dünn. Nur für Sonderfälle.")).el,
@@ -275,7 +275,7 @@ function syncLitho() {
   for (const [v, b] of kindBtns) b.classList.toggle("active", v === on);
   lithoFilBtn.replaceChildren(h("div", { class: "swatch", style: { background: lithoView.filament.color } }), `${lithoView.filament.name} · TD ${lithoView.filament.td.toFixed(1)}`);
   const show = (k: keyof HeightSettings, vis: boolean) => { const el = fields[k]?.el; if (el) el.style.display = vis ? "" : "none"; };
-  show("litho_angle_deg", form === "curved"); const round = form === "sphere" || form === "cylinder"; for (const k of ["litho_img_deg", "litho_img_x", "litho_img_y", "litho_repeat", "litho_rest_mm"] as const) show(k, round); show("litho_height_mm", form === "cylinder"); show("litho_cap", form === "sphere"); lightSizeSel.el.style.display = lightSize.el.style.display = form === "sphere" ? "" : "none"; show("litho_cap_mm", form === "sphere" && !!state.settings.litho_cap); show("litho_hole_mm", form === "sphere"); show("litho_loop", form === "sphere");
+  show("litho_angle_deg", form === "curved"); const round = form === "sphere" || form === "cylinder"; for (const k of ["litho_img_deg", "litho_img_x", "litho_img_y", "litho_repeat", "litho_rest_mm"] as const) show(k, round); show("litho_height_mm", form === "cylinder"); show("litho_cap", form === "sphere"); lightSizeSel.el.style.display = lightSize.el.style.display = form === "sphere" ? "" : "none"; show("litho_cap_mm", form === "sphere" && !!state.settings.litho_cap); show("litho_hole_mm", form === "sphere" && !state.settings.litho_cap); show("litho_loop", form === "sphere");
   const wl = fields.width_mm?.el.querySelector("label");
   if (wl) wl.textContent = !on ? "Breite" : form === "cylinder" || form === "sphere" ? "Durchmesser" : form === "curved" ? "Breite (Bogenlänge)" : "Breite";
 }

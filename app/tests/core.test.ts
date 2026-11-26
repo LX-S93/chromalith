@@ -376,12 +376,16 @@ describe("Lithophanie", () => {
     expect(pic).toBeGreaterThan(20);
     expect(rest).toBeGreaterThan(pic * 3);
   });
-  it("Schraubdeckel: Gewinde von Hals und Deckel haben überall das eingestellte Spiel", () => {
+  it("Schraubdeckel: Kugel steht in der Druckdatei auf dem Kopf auf der Gewindeseite, Deckel daneben", () => {
     const s = { ...base, litho_form: "sphere" as const, litho_cap: true, litho_cap_mm: 26 };
     const off = lithoMesh(lithoThickness(img, s), s), on = lithoMesh(lithoThickness(img, s), s, Infinity, true);
-    // aufgeschraubt ist der Körper höher als mit Deckel daneben nur breit
     expect(off.size[0]).toBeGreaterThan(on.size[0] + 20);
     expect(on.vertices.length).toBe(off.vertices.length);
+    let minZ = Infinity; for (let i = 2; i < off.vertices.length; i += 3) minZ = Math.min(minZ, off.vertices[i]);
+    expect(minZ).toBeCloseTo(0, 3);
+    // auf dem Bett liegt ein ebener Ring: viele Punkte genau bei z = 0
+    let flat = 0; for (let i = 2; i < off.vertices.length; i += 3) if (Math.abs(off.vertices[i]) < 1e-4) flat++;
+    expect(flat).toBeGreaterThan(150);
   });
 });
 
