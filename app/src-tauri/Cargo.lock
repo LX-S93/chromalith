@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "chromalith"
-version = "0.24.0"
+version = "0.24.1"
 dependencies = [
  "sha2 0.10.9",
  "tauri",

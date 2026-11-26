@@ -13,7 +13,7 @@ export const EXAMPLES: Example[] = [
   relief(A, "tiger", "Tiger"), relief(A, "sunset", "Sonnenuntergang"), relief(A, "koi", "Koi und Welle"), relief(A, "astronaut", "Astronaut"),
   relief(A, "fox", "Fuchs"), relief(A, "lighthouse", "Leuchtturm"), relief(A, "hummingbird", "Kolibri"), relief(A, "stag", "Hirsch"),
   litho(B, "wolf", "Wolf"), litho(B, "owl", "Eule", { litho_form: "sphere", width_mm: 90, litho_img_deg: 140 }),
-  litho(B, "dog", "Hund"), litho(B, "kitten", "Kätzchen"), litho(B, "hands", "Hände"), litho(B, "couple", "Paar am Meer"), litho(B, "childdog", "Beste Freunde"),
+  litho(B, "dog", "Hund"), litho(B, "kitten", "Kätzchen"), litho(B, "couple", "Paar am Meer"),
   relief(C, "family", "Familie"), relief(C, "balloons", "Heißluftballons"), relief(C, "hearttree", "Herzbaum"),
   relief(D, "circuit", "Leiterbahnen"), relief(D, "neoncity", "Neonstadt"), relief(D, "cyborg", "Cyborg"), relief(D, "retropc", "Retro-Computer"), relief(D, "rider", "Motorrad"),
 ];

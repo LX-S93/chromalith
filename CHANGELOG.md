@@ -2,6 +2,14 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.24.1 – 2026-11-26
+
+- Removed two built-in lithophane examples ("Hands" and "Best friends").
+
+<!-- de
+- Zwei mitgelieferte Lithophanie-Beispiele entfernt („Hände“ und „Beste Freunde“).
+-->
+
 ## 0.24.0 – 2026-11-26
 
 - New: the motif can extend beyond the shape (section "Shape"). The round or rectangular shape becomes smaller than the image and parts of the motif, such as ears, stick out over its edge. "Attached" gives the protruding parts their own base plate and prints without supports; "Floating" leaves air below them and needs supports from the slicer.
