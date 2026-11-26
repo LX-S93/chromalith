@@ -7,6 +7,8 @@
   GitHub Actions legt bei einer neuen Versionsnummer automatisch Tag `vX.Y.Z` und Release mit
   Setup-Exe, `Chromalith-windows.zip` und den Notes aus dem CHANGELOG an.
 - Keine Dateien, Namen oder Assets fremder Programme ins Repository (Chromalith ist eine eigenständige Entwicklung).
+- CHANGELOG-Einträge: englische Stichpunkte, darunter dieselben Punkte auf Deutsch in einem Kommentar `<!-- de … -->`
+  (auf GitHub unsichtbar; der Update-Dialog zeigt sie in der deutschen Oberfläche).
 - Das Repository ist öffentlich: README, GitHub-Beschreibung und Release-Notes auf Englisch; nichts Privates einchecken.
 - Oberfläche: Quelltexte sind Deutsch, Englisch kommt aus `app/src/i18n-en.ts` – bei neuen Texten dort den Eintrag ergänzen.
 - Code liegt in `app/` (Vite + TypeScript, Desktop über Tauri). `python/` ist die alte Version (nur Referenz).

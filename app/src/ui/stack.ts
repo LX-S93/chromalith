@@ -1,11 +1,13 @@
 /** Filament-Stapel: Liste (oben = zuletzt gedruckt), Startschichten, Schichtbalken mit ziehbaren Wechseln. */
 import { filamentAtLayer, filamentLabel, filamentLuminance, layerTopZ, type ColorStop } from "../core";
 import { button, clear, contextMenu, h } from "./dom";
+import { num, tr } from "../i18n";
 
 export interface LayerInfo { layerCount: number; minLayer: number; base: number; step: number; colorMode: boolean }
 
 export interface StackHost {
   stops: ColorStop[];
+  /** structural: Filamente geändert; sonst nur Wechsel-Schichten verschoben (Live-Vorschau). */
   changed(structural: boolean): void;
   add(): void;
   auto(): void;
@@ -26,22 +28,24 @@ export class StackPanel {
   private selected: number | null = null;
   private li: LayerInfo = { layerCount: 30, minLayer: 1, base: 0.16, step: 0.08, colorMode: false };
   private zLabels = new Map<number, HTMLElement>();
+  private rangeLabels = new Map<number, HTMLElement>();
+  private inputs = new Map<number, HTMLInputElement>();
 
   constructor(private host: StackHost) {
     const actions = h("div", { class: "stack-actions" },
-      button("Hinzufügen", () => host.add(), { icon: "plus" }),
-      button("Entfernen", () => this.remove(), { icon: "trash" }),
-      button("Nach oben", () => this.move(+1), { icon: "up" }),
-      button("Nach unten", () => this.move(-1), { icon: "down" }),
-      button("Automatisch verteilen", () => host.auto(), { icon: "magic", cls: "primary wide",
+      button("Hinzufügen", () => host.add(), { icon: "plus", cls: "w3", title: "Filament aus der Bibliothek in den Stapel legen" }),
+      button(null, () => this.remove(), { icon: "trash", title: "Gewähltes Filament aus dem Stapel entfernen" }),
+      button(null, () => this.move(+1), { icon: "up", title: "Gewähltes Filament nach oben" }),
+      button(null, () => this.move(-1), { icon: "down", title: "Gewähltes Filament nach unten" }),
+      button("Automatisch verteilen", () => host.auto(), { icon: "magic", cls: "primary w6",
         title: "Sucht passende Wechsel-Schichten. Im farbtreuen Modus so, dass die Bildfarben am besten getroffen werden." }),
-      button("Filamente vorschlagen", () => host.suggest(), { icon: "library", cls: "wide",
+      button("Vorschlagen", () => host.suggest(), { icon: "library", cls: "w3",
         title: "Sucht aus deiner Bibliothek das Filament-Set, das die Bildfarben am besten trifft." }),
-      button("Schwarz-Weiß", () => host.blackWhite(), { icon: "contrast", cls: "wide",
+      button("Schwarz-Weiß", () => host.blackWhite(), { icon: "contrast", cls: "w3",
         title: "Macht aus dem Bild mit einem Klick ein Schwarz-Weiß-Relief: Stapel Schwarz, Grau, Weiß, Höhe aus der Bildhelligkeit, Wechsel automatisch verteilt." }),
-      button("Nach Helligkeit sortieren", () => this.sortByBrightness(), { icon: "sort", cls: "wide" }),
-      button("Set laden", () => host.loadSet(), { icon: "folder" }),
-      button("Set speichern", () => host.saveSet(), { icon: "save" }));
+      button("Sortieren", () => this.sortByBrightness(), { icon: "sort", cls: "w2", title: "Filamente nach Helligkeit sortieren" }),
+      button("Laden", () => host.loadSet(), { icon: "folder", cls: "w2", title: "Gespeichertes Filament-Set laden" }),
+      button("Sichern", () => host.saveSet(), { icon: "save", cls: "w2", title: "Diesen Stapel als Filament-Set speichern" }));
     this.el = h("aside", { class: "right" },
       h("div", { class: "stack-head" }, h("h3", null, "Filament-Stapel"), h("span", { class: "hint" }, "oben = zuletzt gedruckt")),
       h("div", { class: "stack-body" }, this.bar, this.list),
@@ -70,7 +74,7 @@ export class StackPanel {
 
   render() {
     clear(this.list);
-    this.zLabels.clear();
+    this.zLabels.clear(); this.rangeLabels.clear(); this.inputs.clear();
     const st = this.stops;
     for (let idx = st.length - 1; idx >= 0; idx--) {
       const s = st[idx];
@@ -78,6 +82,7 @@ export class StackPanel {
       const hi = idx === 0 ? 1 : idx + 1 < st.length ? st[idx + 1].start_layer - 1 : this.li.layerCount;
       const input = h("input", { class: "num", type: "number", min: lo, max: Math.max(lo, hi), step: 1, value: s.start_layer, disabled: idx === 0,
         title: idx === 0 ? "Das unterste Filament beginnt immer bei Schicht 1." : "Ab dieser Schicht wird dieses Filament gedruckt." });
+      this.inputs.set(idx, input as HTMLInputElement);
       input.addEventListener("click", (e) => e.stopPropagation());
       input.addEventListener("input", () => {
         const v = Math.round(Number(input.value));
@@ -92,7 +97,8 @@ export class StackPanel {
         title: s.disabled ? "Ausgeblendet: wird nicht gedruckt. Rechtsklick zum Einblenden." : "Rechtsklick: ausblenden, ersetzen, bearbeiten, entfernen" },
         h("div", { class: "swatch", style: { background: s.filament.color } }),
         h("div", { class: "title" }, h("b", null, filamentLabel(s.filament)),
-          h("small", null, s.disabled ? "ausgeblendet" : `${s.filament.material} · TD ${s.filament.td.toFixed(1)}`)),
+          h("small", null, s.disabled ? "ausgeblendet" : `${s.filament.material} · TD ${s.filament.td.toFixed(1)}`),
+          (() => { const r = h("small", { class: "range", "data-notr": true }); this.rangeLabels.set(idx, r); return r; })()),
         h("div", null, h("div", { class: "layer" }, h("span", { class: "hint" }, "ab"), input), z));
       row.addEventListener("click", () => { this.selected = idx; this.render(); });
       row.addEventListener("contextmenu", (e) => {
@@ -121,11 +127,22 @@ export class StackPanel {
     this.host.changed(false);
   }
 
+  /** Schichtbereich eines Filaments (erste bis letzte Schicht), null wenn es oberhalb des Modells liegt. */
+  private range(i: number): [number, number] | null {
+    const st = this.stops, a = st[i].start_layer;
+    let b = this.li.layerCount;
+    for (let j = i + 1; j < st.length; j++) if (!st[j].disabled) { b = st[j].start_layer - 1; break; }
+    return a > this.li.layerCount || b < a ? null : [a, Math.min(b, this.li.layerCount)];
+  }
+
   private updateZ() {
     this.stops.forEach((s, i) => {
       const z = i === 0 ? 0 : layerTopZ(s.start_layer - 1, this.li.base, this.li.step);
       const el = this.zLabels.get(i);
       if (el) el.textContent = `Z ${z.toFixed(2)} mm`;
+      const r = this.rangeLabels.get(i), rg = s.disabled ? null : this.range(i);
+      if (r) r.textContent = !rg ? "" : rg[0] === rg[1] ? tr("Schicht {}").replace("{}", String(rg[0]))
+        : tr("Schicht {}").replace("{}", `${rg[0]}–${rg[1]}`) + ` · ${num(layerTopZ(rg[1], this.li.base, this.li.step) - layerTopZ(rg[0] - 1, this.li.base, this.li.step), 2)} mm`;
     });
   }
 
@@ -138,7 +155,7 @@ export class StackPanel {
     if (colorMode) this.info.append(h("div", { style: { marginTop: "6px" } },
       "Farbtreuer Modus: Die Reihenfolge darf bunt gemischt sein. „Automatisch verteilen“ sucht die Wechsel, die die Bildfarben am besten treffen."));
     else if (!this.isMonotonic()) this.info.append(h("div", { class: "hint warn", style: { marginTop: "6px" } },
-      "Hinweis: Die Filamente sind nicht nach Helligkeit geordnet. Die Höhe folgt der Bildhelligkeit, deshalb sollten die Farben von unten nach oben stetig dunkler (oder heller) werden. „Nach Helligkeit sortieren“ behebt das."));
+      "Hinweis: Die Filamente sind nicht nach Helligkeit geordnet. Die Höhe folgt der Bildhelligkeit, deshalb sollten die Farben von unten nach oben stetig dunkler (oder heller) werden. „Sortieren“ behebt das."));
   }
 
   isMonotonic(): boolean {
@@ -235,11 +252,28 @@ export class StackPanel {
       const y = r.height - layer * lh;
       g.fillRect(0, y, r.width, lh + 0.5);
     }
+    // einzelne Schichten als feine Linien, sobald sie hoch genug dafür sind
+    if (lh >= 3) {
+      g.fillStyle = "#00000038";
+      for (let layer = 1; layer < n; layer++) g.fillRect(0, Math.round(r.height - layer * lh), r.width, 1);
+    }
     // Bereich unter dem Bild abdunkeln
     if (this.li.minLayer > 1) {
       g.fillStyle = "#0008";
       g.fillRect(0, r.height - (this.li.minLayer - 1) * lh, r.width, (this.li.minLayer - 1) * lh);
     }
+    // Schichtnummern je Filament (von–bis), wenn das Band Platz dafür hat
+    g.font = "600 10px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    this.stops.forEach((s, i) => {
+      const rg = s.disabled ? null : this.range(i);
+      if (!rg) return;
+      const hBand = (rg[1] - rg[0] + 1) * lh;
+      if (hBand < 13) return;
+      g.fillStyle = filamentLuminance(s.filament) > 0.45 ? "#000c" : "#fffd";
+      const yMid = r.height - (rg[0] - 1) * lh - hBand / 2;
+      if (hBand >= 30 && rg[0] !== rg[1]) { g.fillText(String(rg[1]), r.width / 2 - 3, yMid - hBand / 2 + 9); g.fillText(String(rg[0]), r.width / 2 - 3, yMid + hBand / 2 - 8); }
+      else g.fillText(rg[0] === rg[1] ? String(rg[0]) : `${rg[0]}–${rg[1]}`, r.width / 2 - 3, yMid);
+    });
     g.lineWidth = 2;
     this.stops.forEach((s, i) => {
       if (i === 0 || s.start_layer > n || s.disabled) return;
@@ -276,9 +310,9 @@ export class StackPanel {
       const lo = st[i - 1].start_layer + 1;
       const hi = i + 1 < st.length ? st[i + 1].start_layer - 1 : this.li.layerCount;
       const v = Math.min(Math.max(lo, hi), Math.max(lo, layerAt(e)));
-      if (v !== st[i].start_layer) this.setLayer(i, v, true);
+      if (v !== st[i].start_layer) { this.setLayer(i, v, false); const inp = this.inputs.get(i); if (inp) inp.value = String(v); }
     });
-    const end = () => { dragging = null; };
+    const end = () => { if (dragging !== null) this.render(); dragging = null; };
     this.bar.addEventListener("pointerup", end);
     this.bar.addEventListener("pointercancel", end);
   }

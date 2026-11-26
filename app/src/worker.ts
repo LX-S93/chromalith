@@ -9,6 +9,8 @@ import {
 } from "./core";
 
 let image: Raster | null = null;
+let imageVersion = 0;
+let cache: { key: string; hm: ReturnType<typeof buildProject>; small?: ReturnType<typeof downsample>; mesh?: ReturnType<typeof heightmapToMesh> } | null = null;
 
 const renderDigits: DigitRenderer = (w, h, digits, sizePx) => {
   const c = new OffscreenCanvas(w, h);
@@ -46,12 +48,18 @@ self.onmessage = (ev: MessageEvent) => {
   try {
     let result: any, transfer: Transferable[] = [];
     if (type === "image") {
-      image = ev.data.image;
+      image = ev.data.image; imageVersion++; cache = null;
       result = { palette: image ? imagePalette(rgbOf(image), 10) : [] };
     } else if (type === "preview") {
       const s = previewSettings(ev.data.settings, ev.data.maxSide ?? 1200);
       const p = project(s, ev.data.stops);
-      const hm = buildProject(p, renderDigits, s);
+      // Höhenkarte und Netz hängen im Helligkeitsmodus nicht vom Stapel ab: beim Verschieben der Wechsel
+      // wird nur neu eingefärbt (schnell genug für eine Live-Vorschau).
+      const mode = effectiveMode(p);
+      const key = mode !== "color" && !islands.length ? JSON.stringify([imageVersion, s, mode]) : "";
+      const hit = key !== "" && cache?.key === key ? cache : null;
+      const hm = hit ? hit.hm : buildProject(p, renderDigits, s);
+      if (!hit) cache = key ? { key, hm } : null;
       const est = effectiveStops(hm, p.stops);
       const sim = simulate(hm, est);
       const preview = toRGBA(sim, hm.width * hm.height);
@@ -59,8 +67,12 @@ self.onmessage = (ev: MessageEvent) => {
         (self as any).postMessage({ id, ok: true, result: { width: hm.width, height: hm.height, preview: preview.buffer } }, [preview.buffer]);
         return;
       }
-      const small = downsample(hm, ev.data.maxSide3d ?? 600);
-      const mesh = heightmapToMesh(small);
+      const c3 = hit?.small ? hit : null;
+      const small = c3 ? c3.small! : downsample(hm, ev.data.maxSide3d ?? 600);
+      const built = c3 ? c3.mesh! : heightmapToMesh(small);
+      if (cache && cache.hm === hm && !c3) { cache.small = small; cache.mesh = built; }
+      // Kopien versenden: die Puffer im Zwischenspeicher müssen hier bleiben
+      const mesh = cache?.mesh === built ? { ...built, vertices: built.vertices.slice(), faces: built.faces.slice(), topIndex: built.topIndex.slice() } : built;
       const simSmall = simulate(small, est);
       const colors = new Float32Array((mesh.vertices.length / 3) * 3).fill(0.55);
       for (let v = 0; v < mesh.topIndex.length; v++) {

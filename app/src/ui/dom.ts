@@ -89,7 +89,7 @@ export function contextMenu(e: MouseEvent, items: ({ label: string; icon?: strin
 }
 
 /** Einfacher modaler Dialog. Gibt eine Funktion zum Schließen zurück; onClose wird immer genau einmal gerufen. */
-export function modal(title: string, content: HTMLElement, footer: HTMLElement[] = [], small = false, onClose?: () => void): () => void {
+export function modal(title: string, content: HTMLElement, footer: HTMLElement[] = [], small: boolean | "medium" = false, onClose?: () => void): () => void {
   const back = h("div", { class: "modal-back" });
   let closed = false;
   const close = () => {
@@ -101,7 +101,7 @@ export function modal(title: string, content: HTMLElement, footer: HTMLElement[]
     if (e.key === "Escape" && all[all.length - 1] === back) { e.stopPropagation(); close(); }
   };
   const x = button(null, close, { icon: "close", cls: "ghost small", title: "Schließen" });
-  const box = h("div", { class: "modal" + (small ? " small" : "") },
+  const box = h("div", { class: "modal" + (small === "medium" ? " medium" : small ? " small" : "") },
     h("header", null, h("h3", null, title), h("div", { class: "spacer" }), x),
     h("div", { class: "content" }, content),
     footer.length ? h("footer", null, ...footer) : null);

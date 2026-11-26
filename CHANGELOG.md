@@ -2,6 +2,22 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.23.0 – 2026-11-26
+
+- Sliders: a changed value is marked with a dot and a coloured bar from its default, the default is shown as a tick on the track, and each value can be reset (↺ or double-click on the slider). Each section gets a "Reset" button for all its changed values.
+- Filament stack: every filament shows its layer range and thickness, the layer bar shows the individual layers and layer numbers.
+- Live preview: the image updates while you drag a colour change in the layer bar, not only after releasing it.
+- Update dialog: release notes are shown as a formatted list and in German when the app runs in German; dialog buttons no longer run past the edge.
+- Small windows: the top bar collapses its labels instead of cutting off the mode switch; the stack buttons take less room so the filament list stays visible.
+
+<!-- de
+- Schieberegler: Ein geänderter Wert bekommt einen Punkt und einen farbigen Balken ab dem Ausgangswert, der Ausgangswert ist als Strich auf dem Regler zu sehen, und jeder Wert lässt sich zurücksetzen (↺ oder Doppelklick auf den Regler). Jeder Abschnitt hat „Zurücksetzen“ für alle geänderten Werte.
+- Filament-Stapel: Jedes Filament zeigt seinen Schichtbereich und die Dicke, der Balken zeigt die einzelnen Schichten mit Nummern.
+- Live-Vorschau: Das Bild ändert sich schon während du einen Farbwechsel im Balken ziehst, nicht erst beim Loslassen.
+- Update-Dialog: Die Neuerungen erscheinen als saubere Liste und auf Deutsch; die Knöpfe laufen nicht mehr über den Rand.
+- Kleine Fenster: Die Kopfzeile klappt Beschriftungen ein, statt den Modus-Schalter abzuschneiden; die Stapel-Knöpfe brauchen weniger Platz.
+-->
+
 ## 0.22.0 – 2026-11-26
 
 - Reliefs are printable by default: the new default "minimum detail" of 0.4 mm removes single spikes and stubs, widens fine lines (whiskers, outlines) to a printable width instead of deleting them, and in brightness mode rounds thin features into low ridges instead of tall thin walls. Projects saved earlier keep their own setting; set "Mindestdetail / Minimum detail" to 0.4 mm there to get the same result.

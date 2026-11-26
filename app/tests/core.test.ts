@@ -389,7 +389,7 @@ describe("Lithophanie", () => {
   });
 });
 
-import { compareVersions, parseRelease } from "../src/update";
+import { compareVersions, parseRelease, pickNotes } from "../src/update";
 describe("Update", () => {
   it("vergleicht Versionen", () => {
     expect(compareVersions("0.16.0", "0.15.9")).toBeGreaterThan(0);
@@ -425,5 +425,14 @@ describe("Druckbare Mindestbreite", () => {
     const width = (hm: typeof fix) => [...hm.heights.subarray(20 * w, 21 * w)].filter((v) => v > lo + 0.3).length;
     expect(width(raw)).toBe(1);
     expect(width(fix)).toBeGreaterThanOrEqual(2); // Linie bleibt, aber druckbar breit
+  });
+});
+
+describe("Release-Hinweise", () => {
+  const body = "- New thing\n\n<!-- de\n- Neue Sache\n-->\n";
+  it("wählt die deutsche Fassung aus dem Kommentar, sonst Englisch ohne Kommentar", () => {
+    expect(pickNotes(body, "de")).toBe("- Neue Sache");
+    expect(pickNotes(body, "en")).toBe("- New thing");
+    expect(pickNotes("- Only English", "de")).toBe("- Only English");
   });
 });

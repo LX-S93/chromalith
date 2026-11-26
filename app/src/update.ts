@@ -2,7 +2,7 @@
  *  Herunterladen, Prüfen (Größe und SHA-256) und Starten des Installers erledigt die App-Seite (Rust). */
 import { isTauri, store } from "./platform";
 import { button, h, modal, toast } from "./ui/dom";
-import { tr } from "./i18n";
+import { lang, tr } from "./i18n";
 
 export interface Release { version: string; notes: string; url: string; size: number; sha256: string | null }
 
@@ -21,6 +21,36 @@ export function parseRelease(json: any): Release | null {
   if (!asset || !(asset.size > 0)) return null;
   const digest = /^sha256:([0-9a-f]{64})$/i.exec(String(asset.digest ?? ""));
   return { version, notes: String(json.body ?? "").trim(), url: String(asset.browser_download_url), size: asset.size, sha256: digest ? digest[1] : null };
+}
+
+/** Hinweise in der Sprache der Oberfläche: Die Release-Notes sind Englisch; die deutsche Fassung steht
+ *  (auf GitHub unsichtbar) in einem Kommentar `<!-- de … -->` im selben Text. */
+export function pickNotes(body: string, language: string): string {
+  const de = /<!--\s*de\b\s*([\s\S]*?)-->/i.exec(body);
+  if (language === "de" && de && de[1].trim()) return de[1].trim();
+  return body.replace(/<!--[\s\S]*?-->/g, "").trim();
+}
+
+/** Kleine Markdown-Darstellung für die Hinweise: Überschriften, Listen, **fett**, `Code`. Baut nur Textknoten. */
+export function renderNotes(text: string): HTMLElement {
+  const inline = (t: string): (Node | string)[] => t.split(/(\*\*[^*]+\*\*|`[^`]+`)/).filter(Boolean).map((p) =>
+    p.startsWith("**") ? h("b", null, p.slice(2, -2)) : p.startsWith("`") ? h("code", null, p.slice(1, -1)) : p);
+  const root = h("div", { class: "notes", "data-notr": true });
+  let list: HTMLElement | null = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) { list = null; continue; }
+    const head = /^#{1,6}\s+(.*)$/.exec(line), item = /^[-*]\s+(.*)$/.exec(line);
+    if (head) { list = null; root.append(h("h4", null, ...inline(head[1]))); }
+    else if (item) {
+      if (!list) root.append((list = h("ul", null)));
+      // „Stichwort: Erklärung“ – das Stichwort hervorheben, damit die Liste überfliegbar ist
+      const m = /^([^:.!?]{3,40}):\s+(.*)$/.exec(item[1]);
+      list.append(m && !m[1].includes("**") ? h("li", null, h("b", null, m[1] + ": "), ...inline(m[2])) : h("li", null, ...inline(item[1])));
+    } else if (list && list.lastElementChild && /^\s+/.test(raw)) list.lastElementChild.append(" ", ...inline(line));
+    else { list = null; root.append(h("p", null, ...inline(line))); }
+  }
+  return root;
 }
 
 const errorText = (e: any) => {
@@ -42,7 +72,11 @@ export async function checkForUpdate(current: string, manual: boolean, isDirty: 
   } catch (e) { if (manual) toast(tr("Update-Prüfung fehlgeschlagen: {}").replace("{}", tr(errorText(e))), "err"); return; }
   if (!rel || compareVersions(rel.version, current) <= 0) { if (manual) toast(`Chromalith ist aktuell (Version ${current}).`, "ok"); return; }
   if (!manual && store.get("updateSkip", "") === rel.version) return;
-  const r = rel;
+  showUpdate(rel, current, isDirty, save);
+}
+
+/** Der Update-Dialog selbst (getrennt, damit er sich ohne Netz prüfen lässt). */
+export function showUpdate(r: Release, current: string, isDirty: () => boolean, save: () => Promise<void>) {
   open = true;
   const auto = h("input", { type: "checkbox", checked: store.get("updateAuto", true) });
   auto.addEventListener("change", () => store.set("updateAuto", auto.checked));
@@ -53,7 +87,7 @@ export async function checkForUpdate(current: string, manual: boolean, isDirty: 
         let c: "save" | "discard" | null = null;
         const closeAsk = modal("Ungespeicherte Änderungen", h("p", { style: { margin: "0", lineHeight: "1.5" } }, "Das aktuelle Projekt hat ungespeicherte Änderungen. Beim Update startet Chromalith neu."),
           [button("Abbrechen", () => closeAsk()), button("Verwerfen und aktualisieren", () => { c = "discard"; closeAsk(); }),
-            button("Speichern und aktualisieren", () => { c = "save"; closeAsk(); }, { cls: "primary" })], true, () => resolve(c));
+            button("Speichern und aktualisieren", () => { c = "save"; closeAsk(); }, { cls: "primary" })], "medium", () => resolve(c));
       });
       if (!choice) return;
       if (choice === "save") { await save(); if (isDirty()) return; }
@@ -66,12 +100,12 @@ export async function checkForUpdate(current: string, manual: boolean, isDirty: 
     } catch (e) { now.disabled = false; now.textContent = "Jetzt aktualisieren"; toast(tr("Update fehlgeschlagen: {}").replace("{}", tr(errorText(e))), "err", 9000); }
   }, { cls: "primary" });
   const close = modal("Update verfügbar", h("div", { style: { lineHeight: "1.5" } },
-    h("p", { style: { marginTop: "0" } }, `Chromalith ${r.version} ist verfügbar (installiert: ${current}).`),
+    h("div", { class: "update-head" }, h("img", { src: "./icon.png", alt: "" }), h("div", null, h("b", null, `Chromalith ${r.version}`), h("div", { class: "hint" }, tr("installiert: {}").replace("{}", current)))),
     r.notes ? h("div", { class: "hint" }, "Neu in dieser Version:") : null,
-    r.notes ? h("pre", { "data-notr": true, style: { whiteSpace: "pre-wrap", font: "inherit", fontSize: "13px", background: "var(--bg)", padding: "10px", borderRadius: "8px", maxHeight: "240px", overflow: "auto", margin: "6px 0 12px" } }, r.notes) : null,
+    r.notes ? renderNotes(pickNotes(r.notes, lang)) : null,
     h("label", { class: "hint", style: { display: "flex", gap: "8px", alignItems: "center" } }, auto, "Beim Start automatisch nach Updates suchen")),
     [button("Diese Version überspringen", () => { store.set("updateSkip", r.version); close(); }, { cls: "ghost" }), button("Später", () => close()), now],
-    true, () => { open = false; });
+    "medium", () => { open = false; });
 }
 
 /** Beim Start still nachsehen (nur Desktop-App, abschaltbar im Update-Dialog). */

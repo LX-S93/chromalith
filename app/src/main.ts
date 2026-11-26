@@ -2,7 +2,7 @@
 import "./style.css";
 import pkg from "../package.json";
 import {
-  HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
+  DEFAULT_SETTINGS, HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
   parseProject, serializeLibrary, serializeProject, starterLibrary, toRGBA8, validate, type ColorStop, type Filament,
   LITHO_FORMS, materialDensity, filamentAtLayer, layerTopZ, simulate, type HeightSettings, type Island, type Raster,
 } from "./core";
@@ -21,7 +21,7 @@ import { assistantHtml, openAssistant, type AssistData } from "./ui/assistant";
 import { ImageView } from "./ui/view2d";
 import { ModelView } from "./ui/view3d";
 import { fileSuffix, lang, num, setLang, tr, trLines, watchDom } from "./i18n";
-import { autoCheckForUpdate, checkForUpdate } from "./update";
+import { autoCheckForUpdate, checkForUpdate, showUpdate } from "./update";
 import { EXAMPLES, EXAMPLE_GROUPS, type Example } from "./examples";
 
 const VERSION = pkg.version;
@@ -131,14 +131,14 @@ document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target as N
 
 const topbar = h("header", { class: "topbar" },
   h("div", { class: "brand" }, h("img", { src: "./icon.png", alt: "" }), "Chromalith", h("small", null, VERSION)),
-  button("Bild öffnen", openImage, { icon: "image", title: "Bild öffnen (Strg+O)" }),
-  button("Projekt öffnen", openProject, { icon: "folder", title: "Projekt öffnen (Strg+Umschalt+O)" }),
-  button("Speichern", () => saveProject(false), { icon: "save", title: "Projekt speichern (Strg+S)" }),
+  button("Bild öffnen", openImage, { icon: "image", cls: "collapsible", title: "Bild öffnen (Strg+O)" }),
+  button("Projekt öffnen", openProject, { icon: "folder", cls: "collapsible", title: "Projekt öffnen (Strg+Umschalt+O)" }),
+  button("Speichern", () => saveProject(false), { icon: "save", cls: "collapsible", title: "Projekt speichern (Strg+S)" }),
   undoBtn, redoBtn,
-  button("Filamente", () => openLibrary(libHost).then(() => refreshAnalysis()), { icon: "library", title: "Filament-Bibliothek: suchen, bearbeiten, importieren (Strg+L)" }),
+  button("Filamente", () => openLibrary(libHost).then(() => refreshAnalysis()), { icon: "library", cls: "collapsible", title: "Filament-Bibliothek: suchen, bearbeiten, importieren (Strg+L)" }),
   h("div", { class: "spacer" }),
   modePill,
-  button("Umkehren", invertHeight, { icon: "swap", cls: "ghost", title: "Höhe umkehren: helle oder dunkle Bildstellen hoch" }),
+  button("Umkehren", invertHeight, { icon: "swap", cls: "ghost collapsible", title: "Höhe umkehren: helle oder dunkle Bildstellen hoch" }),
   menu,
   button("Exportieren", exportAll, { icon: "download", cls: "primary", title: "STL + Farbwechsel-Liste exportieren (Strg+E)" }));
 
@@ -276,7 +276,7 @@ function syncLitho() {
   lithoFilBtn.replaceChildren(h("div", { class: "swatch", style: { background: lithoView.filament.color } }), `${lithoView.filament.name} · TD ${lithoView.filament.td.toFixed(1)}`);
   const show = (k: keyof HeightSettings, vis: boolean) => { const el = fields[k]?.el; if (el) el.style.display = vis ? "" : "none"; };
   show("litho_angle_deg", form === "curved"); const round = form === "sphere" || form === "cylinder"; for (const k of ["litho_img_deg", "litho_img_x", "litho_img_y", "litho_repeat", "litho_rest_mm"] as const) show(k, round); show("litho_height_mm", form === "cylinder"); show("litho_cap", form === "sphere"); lightSizeSel.el.style.display = lightSize.el.style.display = form === "sphere" ? "" : "none"; show("litho_cap_mm", form === "sphere" && !!state.settings.litho_cap); show("litho_hole_mm", form === "sphere" && !state.settings.litho_cap); show("litho_loop", form === "sphere");
-  const wl = fields.width_mm?.el.querySelector("label");
+  const wl = fields.width_mm?.el.querySelector("label > span");
   if (wl) wl.textContent = !on ? "Breite" : form === "cylinder" || form === "sphere" ? "Durchmesser" : form === "curved" ? "Breite (Bogenlänge)" : "Breite";
 }
 
@@ -383,7 +383,7 @@ const STEPS = ["Bild", "Größe & Form", "Filamente", "Vorschau", "Export"];
 const STEP_HINTS = [
   "Bild öffnen oder ins Fenster ziehen.",
   "Links Breite und Form einstellen. Schichten und Bildkorrektur sind unter „Schichten“ und „Bild“ eingeklappt.",
-  "Rechts den Filament-Stapel wählen. „Filamente vorschlagen“ sucht das beste Set, „Automatisch verteilen“ legt die Wechsel.",
+  "Rechts den Filament-Stapel wählen. „Vorschlagen“ sucht das beste Set, „Automatisch verteilen“ legt die Wechsel.",
   "Ergebnis prüfen: Vergleich mit dem Original, 3D-Ansicht, Farbanalyse mit Verbrauch und Kosten.",
   "Exportieren schreibt STL, 3MF mit Farbwechseln, Farbwechsel-Liste und den Druck-Assistenten.",
 ];
@@ -418,7 +418,7 @@ const main = h("main", { class: "main" }, stepsEl, tabs, views);
 // Rechts: Stapel
 const stack = new StackPanel({
   get stops() { return state.stops; },
-  changed: () => { markDirty(); schedule(); },
+  changed: (structural) => { markDirty(); if (structural) schedule(); else { livePreview(); schedule(320); } },
   add: async () => {
     const picked = await openLibrary(libHost, true);
     if (picked.length) stack.addFilaments(picked.map((f) => ({ ...f })));
@@ -472,6 +472,8 @@ spoolmanAutoSync(libHost).then((r) => {
 });
 
 // ------------------------------------------------------------------ Synchronisation
+for (const [k, f] of Object.entries(fields)) f!.setDefault((DEFAULT_SETTINGS as any)[k]);
+lithoIntensity.setDefault(1);
 function syncFields() {
   for (const [k, f] of Object.entries(fields)) f!.set((state.settings as any)[k]);
   syncMode(); syncShapeFields(); syncLitho();
@@ -542,6 +544,19 @@ function updateTitle() {
 
 // ------------------------------------------------------------------ Berechnung
 let timer = 0, running = false, queued = false;
+/** Live-Vorschau beim Verschieben der Wechsel: nur das 2D-Bild, sofort; die volle Berechnung folgt nach einer Pause. */
+let liveBusy = false, livePending = false;
+async function livePreview() {
+  if (!state.image || state.settings.litho || running) return;
+  if (liveBusy) { livePending = true; return; }
+  liveBusy = true;
+  try {
+    // farbtreu hängt die Höhe vom Stapel ab und muss neu gerechnet werden: dafür gröber, damit es flüssig bleibt
+    const r = await compute.previewImage(state.settings, activeStops(), state.result?.mode === "color" ? 300 : 1200);
+    if (!running) { state.previewRgba = new Uint8ClampedArray(r.preview); viewPreview.set(state.previewRgba, r.width, r.height); }
+  } catch { /* die volle Berechnung meldet Fehler */ }
+  finally { liveBusy = false; if (livePending) { livePending = false; livePreview(); } }
+}
 function schedule(delay = 140) { noteChange(); clearTimeout(timer); timer = window.setTimeout(rebuild, delay); }
 
 async function rebuild() {
@@ -994,4 +1009,4 @@ resetHistory();
 autoCheckForUpdate(VERSION, () => state.dirty && !!state.image, () => saveProject(false));
 
 // für Tests/Fehlersuche
-(window as any).chromalith = { state, rebuild, loadExample, EXAMPLES, loadProjectBytes, loadImageBytes, editFilament, fromRGBA8 };
+(window as any).chromalith = { showUpdate, state, rebuild, loadExample, EXAMPLES, loadProjectBytes, loadImageBytes, editFilament, fromRGBA8 };
