@@ -2,6 +2,11 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.20.2 – 2026-11-26
+
+- Updating with unsaved changes: instead of refusing, the update dialog now offers "Save and update",
+  "Discard and update" or cancel.
+
 ## 0.20.1 – 2026-11-26
 
 - The tiger example is now a roaring tiger (also in the README showcase).

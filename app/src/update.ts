@@ -32,7 +32,7 @@ const errorText = (e: any) => {
 
 let open = false;
 /** Sucht nach einer neueren Version. `manual`: vom Menü aus – meldet dann auch „ist aktuell“ und Fehler. */
-export async function checkForUpdate(current: string, manual: boolean, isDirty: () => boolean) {
+export async function checkForUpdate(current: string, manual: boolean, isDirty: () => boolean, save: () => Promise<void>) {
   if (!isTauri()) { if (manual) toast("Im Browser lädt immer die neueste Version; ein Update ist nicht nötig."); return; }
   if (open) return;
   let rel: Release | null;
@@ -47,7 +47,17 @@ export async function checkForUpdate(current: string, manual: boolean, isDirty: 
   const auto = h("input", { type: "checkbox", checked: store.get("updateAuto", true) });
   auto.addEventListener("change", () => store.set("updateAuto", auto.checked));
   const now = button("Jetzt aktualisieren", async () => {
-    if (isDirty()) { toast("Es gibt ungespeicherte Änderungen. Bitte zuerst das Projekt speichern.", "err"); return; }
+    if (isDirty()) {
+      // offene Änderungen: speichern und aktualisieren, verwerfen und aktualisieren oder abbrechen
+      const choice = await new Promise<"save" | "discard" | null>((resolve) => {
+        let c: "save" | "discard" | null = null;
+        const closeAsk = modal("Ungespeicherte Änderungen", h("p", { style: { margin: "0", lineHeight: "1.5" } }, "Das aktuelle Projekt hat ungespeicherte Änderungen. Beim Update startet Chromalith neu."),
+          [button("Abbrechen", () => closeAsk()), button("Verwerfen und aktualisieren", () => { c = "discard"; closeAsk(); }),
+            button("Speichern und aktualisieren", () => { c = "save"; closeAsk(); }, { cls: "primary" })], true, () => resolve(c));
+      });
+      if (!choice) return;
+      if (choice === "save") { await save(); if (isDirty()) return; }
+    }
     now.disabled = true; now.textContent = "Lade Update …";
     try {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -65,6 +75,6 @@ export async function checkForUpdate(current: string, manual: boolean, isDirty: 
 }
 
 /** Beim Start still nachsehen (nur Desktop-App, abschaltbar im Update-Dialog). */
-export function autoCheckForUpdate(current: string, isDirty: () => boolean) {
-  if (isTauri() && store.get("updateAuto", true)) setTimeout(() => checkForUpdate(current, false, isDirty), 4000);
+export function autoCheckForUpdate(current: string, isDirty: () => boolean, save: () => Promise<void>) {
+  if (isTauri() && store.get("updateAuto", true)) setTimeout(() => checkForUpdate(current, false, isDirty, save), 4000);
 }

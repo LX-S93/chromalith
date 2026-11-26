@@ -123,7 +123,7 @@ menu.append(button(null, () => menu.classList.toggle("open"), { icon: "more", cl
     menuItem("Druck-Assistent (Farbwechsel) …", showAssistant, "", "layers"),
     menuItem("Filament-Bibliothek …", () => openLibrary(libHost).then(() => refreshAnalysis()), "Strg+L", "library"),
     menuItem("Spoolman verbinden …", () => openSpoolman(libHost).then(() => refreshAnalysis()), "", "download"),
-    menuItem("Nach Updates suchen …", () => checkForUpdate(VERSION, true, () => state.dirty && !!state.image), "", "download"),
+    menuItem("Nach Updates suchen …", () => checkForUpdate(VERSION, true, () => state.dirty && !!state.image, () => saveProject(false)), "", "download"),
     menuItem("Sprache / Language …", chooseLanguage, "", "edit"),
     menuItem("☕ Kaffee spendieren", () => openPage("support").catch(() => {}), "", ""),
     menuItem("Über Chromalith", about, "", "layers")));
@@ -978,7 +978,7 @@ if (isTauri()) {
 }
 
 resetHistory();
-autoCheckForUpdate(VERSION, () => state.dirty && !!state.image);
+autoCheckForUpdate(VERSION, () => state.dirty && !!state.image, () => saveProject(false));
 
 // für Tests/Fehlersuche
 (window as any).chromalith = { state, rebuild, loadExample, EXAMPLES, loadProjectBytes, loadImageBytes, editFilament, fromRGBA8 };

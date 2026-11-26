@@ -488,4 +488,6 @@ export const EN: Record<string, string> = {
   "Oben eine Öffnung mit Innengewinde in der Größe des Leuchtmittels, dazu ein Deckel mit Öse als zweites Teil. Unten bekommt die Kugel einen flachen Boden, auf dem das Licht steht. In der STL steht die Kugel auf dem Kopf auf der Gewindeseite, der Deckel daneben: genau so drucken.": "An opening with an internal thread at the top, sized for the light, plus a cap with the hanging loop as a second part. At the bottom the sphere gets a flat floor for the light to stand on. In the STL the sphere stands upside down on its threaded side with the cap next to it: print it exactly like that.",
   "Oben Öffnung {} mm mit Innengewinde, Deckel mit Öse als zweites Teil, unten flacher Boden fürs Licht.": "Top opening {} mm with internal thread, cap with loop as a second part, flat floor for the light at the bottom.",
   "In der STL steht die Kugel auf dem Kopf: so drucken.": "In the STL the sphere stands upside down: print it like that.",
+  "Das aktuelle Projekt hat ungespeicherte Änderungen. Beim Update startet Chromalith neu.": "The current project has unsaved changes. Chromalith restarts during the update.",
+  "Verwerfen und aktualisieren": "Discard and update", "Speichern und aktualisieren": "Save and update",
 };
