@@ -203,3 +203,15 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 
 #app.litho .right, #app.litho [data-mode="relief"], #app.litho .zbar, #app.litho .view-tools:not(.litho-only), #app.litho .mode-pill.top { display: none; }
 #app:not(.litho) [data-mode="litho"], #app:not(.litho) .litho-only { display: none; }
 #app.litho .view-tools.litho-only { display: flex; }
+
+/* Startbildschirm mit Beispielen */
+.dropzone .card.welcome { padding: 0; width: min(880px, calc(100% - 48px)); max-height: calc(100% - 32px); overflow: auto; text-align: left; border-style: solid; background: #15161cf2; }
+.welcome-hero { padding: 34px 36px; background-size: cover; background-position: center right; border-radius: 14px 14px 0 0; min-height: 190px; }
+.drag-over .welcome-hero { outline: 2px dashed var(--accent); outline-offset: -8px; }
+.welcome-title { padding: 16px 20px 0; color: var(--text); font-weight: 600; }
+.examples { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; padding: 12px 20px 20px; }
+.example { all: unset; cursor: pointer; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); transition: border-color .15s, transform .15s; }
+.example:hover, .example:focus-visible { border-color: var(--accent); transform: translateY(-2px); }
+.example img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.example span { padding: 6px 8px 0; color: var(--text); font-size: 13px; }
+.example small { padding: 0 8px 8px; color: var(--muted); font-size: 11px; }

@@ -481,4 +481,8 @@ export const EN: Record<string, string> = {
   "Größe des Lichts, das in die Kugel soll. Daraus ergibt sich die Öffnung (2 mm Luft) und, wenn nötig, eine größere Kugel.": "Size of the light that goes into the sphere. The opening (2 mm clearance) and, if necessary, a larger sphere follow from it.",
   "Durchmesser deines LED-Teelichts oder Lichts mit dem Messschieber messen und hier eintragen. Die Öffnung wird 2 mm größer.": "Measure the diameter of your LED tea light or light with callipers and enter it here. The opening becomes 2 mm larger.",
   "Kugel auf {} mm vergrößert, damit ein Leuchtmittel mit {} mm hinein- und herauspasst.": "Sphere enlarged to {} mm so that a {} mm light fits in and out.",
+  // ---------------------------------------------------------------- Startbildschirm, Beispiele
+  "Oder mit einem Beispiel starten": "Or start with an example", "Als Lithophanie öffnen": "Open as lithophane", "Als Farbrelief öffnen": "Open as colour relief",
+  "{} Filamente": "{} filaments", "Sonnenuntergang": "Sunset", "Koi und Welle": "Koi and wave", "Fuchs": "Fox", "Leuchtturm": "Lighthouse", "Kolibri": "Hummingbird", "Eule": "Owl",
+  "Das Beispiel konnte nicht geladen werden: {}": "The example could not be loaded: {}",
 };

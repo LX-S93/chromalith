@@ -2,6 +2,14 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.19.0 – 2026-11-26
+
+- **Welcome screen with built-in examples.** Seven colour reliefs (tiger, sunset, koi and wave, astronaut, fox,
+  lighthouse, hummingbird) open with a matching six-filament stack, two lithophanes (wolf, owl ornament) open in
+  the light simulation. All example images were generated for Chromalith and are free to use.
+- Lithophane 3D view: more natural exposure, bright images no longer wash out at normal light intensity.
+- The automatic update check now runs once at start (it used to run after loading an image).
+
 ## 0.18.0 – 2026-11-26
 
 - **Sphere ornaments: opening sized for your light.** Choose a preset (LED tea light standard 38 mm, large 45 mm,

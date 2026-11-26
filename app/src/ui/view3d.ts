@@ -197,7 +197,7 @@ export class ModelView {
           // Einfallswinkel auf die Wand: schräg = weniger Licht pro Fläche und längerer Weg durchs Material
           float cosIn = mix(1.0, clamp(dot(ray, bn), 0.0, 1.0), point);
           float fall = mix(1.0, (refDist * refDist) / max(d * d, 1.0), point);
-          vec3 E = lampColor * intensity * 1.6 * fall * (0.25 + 0.75 * cosIn);
+          vec3 E = lampColor * intensity * 0.8 * fall * (0.25 + 0.75 * cosIn);
           vec3 V = normalize(cameraPosition - vWorld);
           vec3 col;
           if (vT < 0.0) {

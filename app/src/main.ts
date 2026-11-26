@@ -22,6 +22,7 @@ import { ImageView } from "./ui/view2d";
 import { ModelView } from "./ui/view3d";
 import { fileSuffix, lang, num, setLang, tr, trLines, watchDom } from "./i18n";
 import { autoCheckForUpdate, checkForUpdate } from "./update";
+import { EXAMPLES, type Example } from "./examples";
 
 const VERSION = pkg.version;
 watchDom();
@@ -309,11 +310,17 @@ view3d.el.append(h("div", { class: "zbar" }, h("span", { class: "hint" }, "Schic
   h("div", { class: "overlay-hint", style: { bottom: "auto", top: "12px" } }, "Ziehen = drehen · Rechts ziehen = verschieben · Rad = zoomen"));
 viewPreview.el.append(h("div", { class: "overlay-hint" }, "Rad = zoomen · Ziehen = verschieben · Doppelklick = einpassen"));
 const busy = h("div", { class: "busy" }, h("div", { class: "spinner" }), "Berechne …");
-const dropzone = h("div", { class: "dropzone" }, h("div", { class: "card" },
-  h("h2", null, "Bild hierher ziehen"),
-  h("p", null, "oder öffnen: PNG, JPG, BMP, WebP – oder ein Projekt (.chroma)"),
-  h("div", { style: { display: "flex", gap: "8px", justifyContent: "center", marginTop: "14px" } },
-    button("Bild öffnen", openImage, { icon: "image", cls: "primary" }), button("Projekt öffnen", openProject, { icon: "folder" }))));
+// Startbildschirm: Bild öffnen oder eines der mitgelieferten Beispiele laden
+const exampleCard = (ex: Example) => h("button", { class: "example", title: ex.litho ? "Als Lithophanie öffnen" : "Als Farbrelief öffnen", onclick: () => loadExample(ex) },
+  h("img", { src: `./examples/${ex.id}-thumb.jpg`, alt: "", loading: "lazy" }), h("span", null, ex.name), h("small", null, ex.litho ? "Lithophanie" : `${ex.stops.length} Filamente`));
+const dropzone = h("div", { class: "dropzone" }, h("div", { class: "card welcome" },
+  h("div", { class: "welcome-hero", style: { backgroundImage: "linear-gradient(90deg, #15161cf2 0%, #15161cb0 45%, #15161c20 100%), url(./examples/start.jpg)" } },
+    h("h2", null, "Bild hierher ziehen"),
+    h("p", null, "oder öffnen: PNG, JPG, BMP, WebP – oder ein Projekt (.chroma)"),
+    h("div", { style: { display: "flex", gap: "8px", marginTop: "14px" } },
+      button("Bild öffnen", openImage, { icon: "image", cls: "primary" }), button("Projekt öffnen", openProject, { icon: "folder" }))),
+  h("div", { class: "welcome-title" }, "Oder mit einem Beispiel starten"),
+  h("div", { class: "examples" }, ...EXAMPLES.map(exampleCard))));
 const views = h("div", { class: "views" }, viewPreview.el, viewOriginal.el, view3d.el, analysisEl, dropzone, busy);
 const tabs = h("div", { class: "tabs" });
 const TABS: [string, HTMLElement][] = [["Vorschau", viewPreview.el], ["Original", viewOriginal.el], ["3D", view3d.el], ["Farbanalyse", analysisEl]];
@@ -745,7 +752,6 @@ async function loadImageBytes(name: string, bytes: Uint8Array) {
   await rebuild();
   if (first) await autoDistribute();
   resetHistory();
-autoCheckForUpdate(VERSION, () => state.dirty && !!state.image);
 }
 
 async function openImage() {
@@ -756,6 +762,29 @@ async function openImage() {
 async function confirmDiscard(): Promise<boolean> {
   if (!state.dirty || !state.image) return true;
   return confirmDialog("Ungespeicherte Änderungen", "Das aktuelle Projekt hat ungespeicherte Änderungen. Trotzdem fortfahren?", "Verwerfen");
+}
+
+/** Lädt ein mitgeliefertes Beispiel samt passendem Filament-Stapel bzw. als Lithophanie. */
+async function loadExample(ex: Example) {
+  if (!(await confirmDiscard())) return;
+  try {
+    const bytes = new Uint8Array(await (await fetch(`./examples/${ex.id}.jpg`)).arrayBuffer());
+    const img = await decodeImage(bytes);
+    state.path = null; state.name = tr(ex.name);
+    state.settings = normalizeSettings({ ...ex.settings });
+    state.islands.splice(0); islandPanel.render();
+    if (ex.stops.length) {
+      const lib = new Map(starterLibrary().map((f) => [f.name, f]));
+      state.stops.splice(0, state.stops.length, ...ex.stops.map(([n, layer]) => ({ filament: lib.get(n)!, start_layer: layer })).filter((x) => x.filament));
+    }
+    syncFields(); syncLitho();
+    await setImage(img, null);
+    stack.render();
+    await rebuild();
+    resetHistory();
+    state.dirty = false; updateTitle();
+    showTab(ex.litho ? 2 : 0);
+  } catch (e: any) { toast("Das Beispiel konnte nicht geladen werden: " + e.message, "err"); }
 }
 
 async function loadProjectBytes(name: string, bytes: Uint8Array, path: string | null) {
@@ -949,6 +978,7 @@ if (isTauri()) {
 }
 
 resetHistory();
+autoCheckForUpdate(VERSION, () => state.dirty && !!state.image);
 
 // für Tests/Fehlersuche
-(window as any).chromalith = { state, rebuild, loadProjectBytes, loadImageBytes, editFilament, fromRGBA8 };
+(window as any).chromalith = { state, rebuild, loadExample, EXAMPLES, loadProjectBytes, loadImageBytes, editFilament, fromRGBA8 };

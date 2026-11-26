@@ -1,0 +1,219 @@
+{
+ "tiger": {
+  "stops": [
+   [
+    "Beige",
+    1
+   ],
+   [
+    "Hellblau",
+    2
+   ],
+   [
+    "Schwarz",
+    8
+   ],
+   [
+    "Rot",
+    16
+   ],
+   [
+    "Orange",
+    17
+   ],
+   [
+    "Weiß",
+    27
+   ]
+  ],
+  "settings": {
+   "height_mode": "color"
+  }
+ },
+ "sunset": {
+  "stops": [
+   [
+    "Gold",
+    1
+   ],
+   [
+    "Rot",
+    4
+   ],
+   [
+    "Violett",
+    12
+   ],
+   [
+    "Schwarz",
+    14
+   ],
+   [
+    "Blau",
+    19
+   ],
+   [
+    "Magenta",
+    24
+   ]
+  ],
+  "settings": {
+   "height_mode": "color"
+  }
+ },
+ "koi": {
+  "stops": [
+   [
+    "Weiß",
+    1
+   ],
+   [
+    "Beige",
+    2
+   ],
+   [
+    "Schwarz",
+    5
+   ],
+   [
+    "Cyan",
+    13
+   ],
+   [
+    "Rot",
+    17
+   ],
+   [
+    "Orange",
+    24
+   ]
+  ],
+  "settings": {
+   "height_mode": "color"
+  }
+ },
+ "astronaut": {
+  "stops": [
+   [
+    "Beige",
+    1
+   ],
+   [
+    "Dunkelblau",
+    5
+   ],
+   [
+    "Cyan",
+    13
+   ],
+   [
+    "Blau",
+    17
+   ],
+   [
+    "Schwarz",
+    18
+   ],
+   [
+    "Orange",
+    22
+   ]
+  ],
+  "settings": {
+   "height_mode": "color"
+  }
+ },
+ "fox": {
+  "stops": [
+   [
+    "Weiß",
+    1
+   ],
+   [
+    "Dunkelblau",
+    5
+   ],
+   [
+    "Grün",
+    13
+   ],
+   [
+    "Schwarz",
+    16
+   ],
+   [
+    "Orange",
+    19
+   ],
+   [
+    "Gelb",
+    27
+   ]
+  ],
+  "settings": {
+   "height_mode": "color"
+  }
+ },
+ "lighthouse": {
+  "stops": [
+   [
+    "Weiß",
+    1
+   ],
+   [
+    "Gold",
+    2
+   ],
+   [
+    "Schwarz",
+    5
+   ],
+   [
+    "Orange",
+    12
+   ],
+   [
+    "Rot",
+    16
+   ],
+   [
+    "Gelb",
+    22
+   ]
+  ],
+  "settings": {
+   "height_mode": "color"
+  }
+ },
+ "hummingbird": {
+  "stops": [
+   [
+    "Gelb",
+    1
+   ],
+   [
+    "Dunkelblau",
+    4
+   ],
+   [
+    "Cyan",
+    9
+   ],
+   [
+    "Schwarz",
+    17
+   ],
+   [
+    "Violett",
+    22
+   ],
+   [
+    "Magenta",
+    23
+   ]
+  ],
+  "settings": {
+   "height_mode": "color"
+  }
+ }
+}
