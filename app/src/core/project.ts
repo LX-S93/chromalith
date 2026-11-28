@@ -17,7 +17,11 @@ export interface Project {
   settings: HeightSettings;
   stops: ColorStop[];
   islands?: Island[];
+  /** Tag-und-Nacht-Bild: zweites Bild (PNG), das im Gegenlicht erscheint, und das Filament der Rückplatte */
+  nightPng?: Uint8Array | null;
+  nightFilament?: NightFilament | null;
 }
+export interface NightFilament { name: string; color: string; td: number }
 
 export function effectiveMode(p: Project): EffectiveMode {
   const m = p.settings.height_mode;
@@ -74,6 +78,7 @@ export function serializeProject(p: Project): string {
     plan: p.stops.map((s) => ({ start_layer: s.start_layer, filament: s.filament, ...(s.disabled ? { disabled: true } : {}) })),
     islands: p.islands ?? [],
     image_png: p.imagePng ? b64encode(p.imagePng) : null,
+    ...(p.nightPng ? { night_png: b64encode(p.nightPng), ...(p.nightFilament ? { night_filament: p.nightFilament } : {}) } : {}),
   });
 }
 
@@ -83,6 +88,8 @@ export interface ParsedProject {
   stops: ColorStop[];
   islands: Island[];
   imagePng: Uint8Array | null;
+  nightPng: Uint8Array | null;
+  nightFilament: NightFilament | null;
 }
 
 export function parseProject(text: string): ParsedProject {
@@ -96,5 +103,8 @@ export function parseProject(text: string): ParsedProject {
       owned: Boolean(s.filament.owned), ...filamentExtras(s.filament) } as Filament,
   }));
   const islands = (d.islands ?? []).filter((i: any) => i && i.filament).map(normalizeIsland);
-  return { name: d.name ?? "Unbenannt", settings: normalizeSettings(d.settings), stops, islands, imagePng: d.image_png ? b64decode(d.image_png) : null };
+  const nf = d.night_filament;
+  const nightFilament = nf && typeof nf.color === "string" && Number(nf.td) > 0 ? { name: String(nf.name ?? ""), color: nf.color, td: Number(nf.td) } : null;
+  return { name: d.name ?? "Unbenannt", settings: normalizeSettings(d.settings), stops, islands, imagePng: d.image_png ? b64decode(d.image_png) : null,
+    nightPng: typeof d.night_png === "string" && d.night_png ? b64decode(d.night_png) : null, nightFilament };
 }

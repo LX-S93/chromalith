@@ -2,6 +2,28 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.29.0 – 2026-11-28
+
+- New: day-and-night image. In daylight you see the colour relief, with light from behind a second, hidden image appears. Section "Day-and-night image" on the left: choose the night image, and Chromalith creates a single-colour back plate whose thickness carries it (thin = bright).
+- The back plate also compensates for the colour relief itself, which lets more light through where it is thin: it gets thicker there, so the night image appears and not a shadow of the day image. "Compensate day image" sets how far.
+- "Automatic thickness" makes the plate just thick enough for the compensation and a strong contrast of the night image (6 mm at most). If the chosen filament is too translucent for that, Chromalith names the TD that would work and, the first time, picks a matching light and neutral filament from the library.
+- Preview: switch between "Day" and "Night". The night view shows both plates lit from behind; the comparison then shows the night image on the left. Key figures below the settings say how much light the day image lets through, how far it is compensated, the contrast of the night image and how much light arrives.
+- Export additionally writes the back plate as STL and its backlit preview. The plate is printed smooth side down and then turned over, so that its smooth side lies against the colour relief; the STL is already mirrored for this, and a small raised dot marks the top left corner as seen from the front.
+- Honest limits: only brightness is compensated, coloured areas of the day image still tint the light. It works best with a stack that starts with the darkest filament at the bottom; Chromalith warns if the day image lets through many times more light in some places than in others. The night image needs a strong, even light and a dark room.
+- The night image and the back plate filament are saved in the project (.chroma).
+- Fixed: the "Compare" button above the preview did not react to clicks.
+
+<!-- de
+- Neu: Tag-und-Nacht-Bild. Bei Tageslicht siehst du das Farbrelief, mit Licht von hinten erscheint ein zweites, verborgenes Bild. Abschnitt „Tag-und-Nacht-Bild“ links: Nachtbild wählen, und Chromalith erzeugt eine einfarbige Rückplatte, deren Dicke das Bild trägt (dünn = hell).
+- Die Rückplatte gleicht außerdem das Farbrelief selbst aus, das an dünnen Stellen mehr Licht durchlässt: Dort wird sie dicker, damit das Nachtbild erscheint und nicht ein Schatten des Tagbilds. „Tagbild ausgleichen“ legt fest, wie weit.
+- „Dicke automatisch“ macht die Platte gerade so dick, dass Ausgleich und ein kräftiger Kontrast des Nachtbilds Platz haben (höchstens 6 mm). Ist das gewählte Filament dafür zu durchscheinend, nennt Chromalith den TD, mit dem es klappt, und wählt beim ersten Mal ein passendes helles, farbneutrales Filament aus der Bibliothek.
+- Vorschau: Umschalten zwischen „Tag“ und „Nacht“. Die Nachtansicht zeigt beide Platten mit Licht von hinten; der Vergleich zeigt dann links das Nachtbild. Kennzahlen unter den Einstellungen sagen, wie viel Licht das Tagbild durchlässt, wie weit es ausgeglichen wird, wie viel Kontrast das Nachtbild hat und wie viel Licht ankommt.
+- Der Export schreibt zusätzlich die Rückplatte als STL und ihre Vorschau im Gegenlicht. Die Platte wird mit der glatten Seite nach unten gedruckt und danach umgedreht, sodass die glatte Seite am Farbrelief liegt; die STL ist dafür bereits gespiegelt, und ein kleiner erhabener Punkt markiert die Ecke, die von vorn gesehen oben links liegt.
+- Ehrliche Grenzen: Ausgeglichen wird nur die Helligkeit, farbige Stellen des Tagbilds färben das Licht weiterhin. Am besten klappt es mit einem Stapel, der unten mit dem dunkelsten Filament beginnt; Chromalith warnt, wenn das Tagbild an manchen Stellen um ein Vielfaches mehr Licht durchlässt als an anderen. Das Nachtbild braucht ein kräftiges, gleichmäßiges Licht und einen dunklen Raum.
+- Nachtbild und Filament der Rückplatte werden im Projekt (.chroma) gespeichert.
+- Behoben: Der Knopf „Vergleich“ über der Vorschau reagierte nicht auf Klicks.
+-->
+
 ## 0.28.0 – 2026-11-28
 
 - New: measure the TD of your own filaments (menu "⋯ → Measure TD …", also in the filament library and in "Edit filament").

@@ -6,9 +6,10 @@ import {
   parseProject, serializeLibrary, serializeProject, starterLibrary, toRGBA8, validate, type ColorStop, type Filament,
   LITHO_FORMS, materialDensity, filamentAtLayer, layerTopZ, simulate, effectiveMode, type HeightSettings, type Island, type Project, type Raster,
   SLICER_TARGETS, filamentKey, planSlots, type ThreeMfInfo,
+  NIGHT_AUTO_MAX, pickNightFilament, resize, type NightFilament, type NightLight,
 } from "./core";
 import * as compute from "./compute";
-import type { PreviewResult } from "./compute";
+import type { NightResult, PreviewResult } from "./compute";
 import { decodeImage, isPng, isTauri, openFile, openPage, rgbaToPng, saveFile, saveSibling, store } from "./platform";
 import { $, button, clear, confirmDialog, h, icon, modal, toast } from "./ui/dom";
 import { section, selectField, sliderField, switchField, type Field } from "./ui/fields";
@@ -45,6 +46,10 @@ const state = {
   result: null as PreviewResult | null,
   previewRgba: null as Uint8ClampedArray | null,
   palette: [] as { color: string; share: number }[],
+  /** Tag-und-Nacht-Bild: zweites Bild, das im Gegenlicht erscheint (samt PNG fürs Projekt und Vorschau) */
+  night: null as Raster | null,
+  nightPng: null as Uint8Array | null,
+  nightRgba: null as Uint8ClampedArray | null,
 };
 /** Filamente, die gedruckt werden (ohne ausgeblendete). */
 const activeStops = () => state.stops.filter((s) => !s.disabled);
@@ -205,6 +210,43 @@ const islandPanel = new IslandPanel({
   changed: () => { markDirty(); schedule(); },
 });
 left.append(section("Farbinseln", false, islandPanel.el));
+
+// ------------------------------------------------------------------ Tag-und-Nacht-Bild
+/** Filament der Rückplatte (gilt für neue Projekte; ein Projekt bringt sein eigenes mit) und welche Seite die Vorschau zeigt */
+const storedNightFilament = () => store.get<NightFilament>("nightFilament", { name: "Generisch Grau hell", color: "#b8bbbf", td: 2 });
+const nightView = { filament: storedNightFilament(), show: false };
+/** Licht hinter dem Bild: gleichmäßig und neutral, wie ein Leuchtrahmen */
+const NIGHT_LAMP = "#fff3e4";
+const nightLight = (): NightLight | null => state.night && !state.settings.litho
+  ? { filamentColor: nightView.filament.color, td: nightView.filament.td, light: NIGHT_LAMP, intensity: 1 } : null;
+const nightPickBtn = button("", chooseNight, { cls: "wide", title: "Zweites Bild wählen, das erst mit Licht von hinten erscheint. Es füllt die Fläche des Tagbilds; was übersteht, wird mittig abgeschnitten." });
+const nightRemoveBtn = button("Entfernen", removeNight, { icon: "trash", cls: "ghost", title: "Nachtbild entfernen: Es bleibt das normale Farbrelief." });
+const nightThumb = h("canvas", { class: "night-thumb" });
+const nightFilBtn = button("", async () => {
+  const f = (await openLibrary(libHost, true))[0];
+  if (!f) return;
+  nightView.filament = { name: filamentLabel(f), color: f.color, td: f.td }; store.set("nightFilament", nightView.filament);
+  markDirty(); syncNight(); schedule(0);
+}, { cls: "wide", title: "Filament der Rückplatte. Am besten hell und nicht zu durchscheinend: Mit einem TD von etwa 1,5 bis 3 mm bleibt die Platte dünn und das Nachtbild scharf." });
+const nightCompField = sliderField("Tagbild ausgleichen", 0, 100, 5, "%", (v) => setSetting("night_comp", v / 100),
+  "Das Farbrelief lässt an dünnen Stellen mehr Licht durch als an dicken. Die Rückplatte gleicht das aus, damit im Gegenlicht nur das Nachtbild erscheint. Weniger Ausgleich lässt dem Nachtbild mehr Kontrast, dafür scheint das Tagbild als Schatten durch.", 0);
+fields.night_comp = { el: nightCompField.el, set: (v: number) => nightCompField.set(Math.round(v * 100)), setDefault: (v: number) => nightCompField.setDefault(Math.round(v * 100)) };
+const nightInfo = h("div", { class: "night-info" });
+const nightSettings = h("div", null,
+  h("div", { class: "field" }, h("label", null, "Filament der Rückplatte"), nightFilBtn),
+  sl("night_min_mm", "Dünnste Stelle (hell)", 0.3, 2, 0.05, "mm", "Dicke der Rückplatte an den hellsten Stellen des Nachtbilds. 0,6 mm ist stabil und lässt viel Licht durch."),
+  (fields.night_auto = switchField("Dicke automatisch", (v) => { setSetting("night_auto", v); syncNight(); },
+    `Chromalith wählt die dickste Stelle so, dass das Tagbild ausgeglichen wird und das Nachtbild kräftigen Kontrast bekommt (höchstens ${NIGHT_AUTO_MAX} mm). Ausschalten, um die Dicke selbst festzulegen.`)).el,
+  sl("night_max_mm", "Dickste Stelle (dunkel)", 1, 8, 0.1, "mm", "Dicke der Rückplatte an den dunkelsten Stellen. Mehr Dicke gibt mehr Ausgleich und mehr Kontrast, macht das Nachtbild aber dunkler und weicher.", 1),
+  nightCompField.el,
+  nightInfo,
+  h("p", { class: "hint", style: { margin: "8px 0 0" } }, "So wird gebaut: Farbrelief und Rückplatte getrennt drucken, die Rückplatte einfarbig mit 100 % Füllung. Die Rückplatte umdrehen und mit der glatten Seite hinter das Farbrelief legen, zum Beispiel in einem Leuchtrahmen. Ihr kleiner erhabener Punkt gehört, von vorn gesehen, nach oben links. Bei Tageslicht siehst du das Tagbild, mit Licht von hinten erscheint das Nachtbild."));
+const nightSection = section("Tag-und-Nacht-Bild", false,
+  h("p", { class: "hint", style: { margin: "0 0 8px" } }, "Ein zweites Bild, das erst mit Licht von hinten erscheint. Dafür entsteht eine zweite, einfarbige Platte, die hinter das Farbrelief kommt."),
+  h("div", { class: "night-pick" }, nightThumb, h("div", { class: "night-buttons" }, nightPickBtn, nightRemoveBtn)),
+  nightSettings);
+nightSection.dataset.mode = "relief";
+left.append(nightSection);
 // Nur fürs Farbrelief: Form, Schichten und Farbinseln, dazu Rahmen, Höhenmodus und Detailtreue.
 // Die Lithophanie nutzt davon nichts, deshalb sind sie dort ausgeblendet (style.css: #app.litho [data-mode="relief"]).
 for (const d of left.querySelectorAll<HTMLElement>("details.section")) if (["Form", "Schichten", "Farbinseln"].includes(d.querySelector("summary > span")!.textContent!)) d.dataset.mode = "relief";
@@ -360,7 +402,12 @@ TABS.forEach(([label], i) => tabs.append(h("button", { class: "tab", onclick: ()
 let compareOn = store.get("compare", false);
 const compareBtn = button("Vergleich", () => { compareOn = !compareOn; store.set("compare", compareOn); updateCompare(); },
   { icon: "swap", cls: "small", title: "Original und Ergebnis nebeneinander: Teiler mit der Maus verschieben" });
-viewPreview.el.append(h("div", { class: "view-tools" }, compareBtn));
+// Tag-und-Nacht-Bild: die Vorschau zeigt das Farbrelief bei Tageslicht oder beide Platten im Gegenlicht
+const dayNightBtns = ([[false, "Tag"], [true, "Nacht"]] as const).map(([v, label]) =>
+  [v, h("button", { onclick: () => { nightView.show = v; syncNight(); showPreview(); updateCompare(); } }, label)] as const);
+const dayNightPill = h("div", { class: "mode-pill day-night", title: "Tag: das Farbrelief bei Licht von vorn. Nacht: Farbrelief und Rückplatte mit Licht von hinten. Die Helligkeit ist dabei wie von einer Kamera an die hellste Stelle angepasst." },
+  ...dayNightBtns.map(([, b]) => b));
+viewPreview.el.append(h("div", { class: "view-tools" }, compareBtn, dayNightPill));
 let compare3d = store.get("compare3d", false);
 const compare3dBtn = button("Vergleich", () => { compare3d = !compare3d; store.set("compare3d", compare3d); updateCompare3d(); },
   { icon: "swap", cls: "small", title: "Links vom Teiler das flache Originalbild, rechts der Druck als Relief mit Tiefe. Teiler mit der Maus verschieben." });
@@ -381,14 +428,30 @@ function syncLight() {
 syncLight();
 view3d.el.append(h("div", { class: "view-tools litho-only", style: { top: "44px" } }, lightBtn));
 
+function rasterCanvas(img: Raster): HTMLCanvasElement {
+  const c = h("canvas", { width: img.width, height: img.height });
+  c.getContext("2d")!.putImageData(new ImageData(toRGBA8(img) as any, img.width, img.height), 0, 0);
+  return c;
+}
 function updateCompare() {
   compareBtn.classList.toggle("on", compareOn);
   compareBtn.textContent = ""; compareBtn.append(icon("swap"), compareOn ? "Vergleich: links Original, rechts Ergebnis" : "Vergleich");
   const r = state.result, img = state.image;
   if (!compareOn || !r || !img) { viewPreview.setCompare(null); return; }
+  if (nightView.show && state.night && state.nightRgba) {
+    // im Gegenlicht steht links das Nachtbild selbst: mittig auf die Fläche des Tagbilds zugeschnitten
+    const n = state.night, ar = r.width / r.height;
+    let cw = n.width, ch = Math.round(cw / ar);
+    if (ch > n.height) { ch = n.height; cw = Math.min(n.width, Math.max(1, Math.round(ch * ar))); }
+    const c = h("canvas", { width: r.width, height: r.height });
+    const g = c.getContext("2d")!;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(rasterCanvas(n), Math.floor((n.width - cw) / 2), Math.floor((n.height - ch) / 2), cw, Math.max(1, ch), 0, 0, r.width, r.height);
+    viewPreview.setCompare(c);
+    return;
+  }
   // Original auf das Raster der Vorschau legen (runder Zuschnitt und Rahmen wie im Modell)
-  const src = h("canvas", { width: img.width, height: img.height });
-  src.getContext("2d")!.putImageData(new ImageData(toRGBA8(img) as any, img.width, img.height), 0, 0);
+  const src = rasterCanvas(img);
   const c = h("canvas", { width: r.width, height: r.height });
   const g = c.getContext("2d")!;
   g.fillStyle = "#2b2b2b"; g.fillRect(0, 0, r.width, r.height);
@@ -516,7 +579,7 @@ for (const [k, f] of Object.entries(fields)) f!.setDefault((DEFAULT_SETTINGS as 
 lithoIntensity.setDefault(1);
 function syncFields() {
   for (const [k, f] of Object.entries(fields)) f!.set((state.settings as any)[k]);
-  syncMode(); syncShapeFields(); syncLitho(); renderSteps();
+  syncMode(); syncShapeFields(); syncLitho(); syncNight(); renderSteps();
 }
 function syncMode(effective?: string) {
   for (const [k, b] of modeButtons) b.classList.toggle("active", k === state.settings.height_mode);
@@ -593,6 +656,15 @@ function updateTitle() {
 let timer = 0, running = false, queued = false;
 /** Live-Vorschau beim Verschieben der Wechsel: nur das 2D-Bild, sofort; die volle Berechnung folgt nach einer Pause. */
 let liveBusy = false, livePending = false;
+/** Größe des Bildes in state.previewRgba (die Live-Vorschau rechnet gröber als die volle Berechnung) */
+let previewDim: [number, number] = [0, 0];
+/** Vorschau anzeigen: das Tagbild oder, wenn gewählt und vorhanden, beide Platten im Gegenlicht */
+function showPreview() {
+  const r = state.result;
+  if (!r || !state.previewRgba) return;
+  if (nightView.show && state.nightRgba) viewPreview.set(state.nightRgba, r.width, r.height);
+  else viewPreview.set(state.previewRgba, previewDim[0], previewDim[1]);
+}
 async function livePreview() {
   if (!state.image || state.settings.litho || running) return;
   if (liveBusy) { livePending = true; return; }
@@ -600,7 +672,8 @@ async function livePreview() {
   try {
     // farbtreu hängt die Höhe vom Stapel ab und muss neu gerechnet werden: dafür gröber, damit es flüssig bleibt
     const r = await compute.previewImage(state.settings, activeStops(), state.result?.mode === "color" ? 300 : 1200);
-    if (!running) { state.previewRgba = new Uint8ClampedArray(r.preview); viewPreview.set(state.previewRgba, r.width, r.height); }
+    // im Gegenlicht (Nacht) bleibt das Bild stehen, bis die volle Berechnung fertig ist
+    if (!running && !(nightView.show && state.nightRgba)) { state.previewRgba = new Uint8ClampedArray(r.preview); previewDim = [r.width, r.height]; viewPreview.set(state.previewRgba, r.width, r.height); }
   } catch { /* die volle Berechnung meldet Fehler */ }
   finally { liveBusy = false; if (livePending) { livePending = false; livePreview(); } }
 }
@@ -614,10 +687,12 @@ async function rebuild() {
   compute.setIslands(state.islands);
   try {
     if (state.settings.litho) { await rebuildLitho(); return; }
-    const r = await compute.preview(state.settings, activeStops());
+    const r = await compute.preview(state.settings, activeStops(), nightLight());
     state.result = r;
-    state.previewRgba = new Uint8ClampedArray(r.preview);
-    viewPreview.set(state.previewRgba, r.width, r.height);
+    state.previewRgba = new Uint8ClampedArray(r.preview); previewDim = [r.width, r.height];
+    state.nightRgba = r.night ? new Uint8ClampedArray(r.night.preview) : null;
+    showPreview();
+    renderNightInfo();
     cutRange.max = String(r.layerCount);
     if (cutFull || Number(cutRange.value) > r.layerCount) cutRange.value = String(r.layerCount);
     view3d.setMesh(r.mesh);
@@ -632,6 +707,7 @@ async function rebuild() {
     setStatus([
       `<b>${r.size[0].toFixed(1)} × ${r.size[1].toFixed(1)} mm</b>`, `${r.layerCount} Schichten`, `max. ${r.maxZ.toFixed(2)} mm`,
       `${changes} Farbwechsel`, `≈ ${(r.triangles / 1e6).toFixed(2)} Mio. Dreiecke`,
+      ...(r.night ? [`Rückplatte ${num(r.night.info.min, 2)}–${num(r.night.info.max, 1)} mm`] : []),
     ]);
   } catch (e: any) {
     setStatus([`⚠ ${e.message}`]);
@@ -828,6 +904,90 @@ async function setImage(img: Raster, png: Uint8Array | null) {
   if (step === 0) { step = 1; renderSteps(); }
 }
 
+// ------------------------------------------------------------------ Tag-und-Nacht-Bild
+/** Nachtbild setzen (null = keins). Sehr große Bilder werden verkleinert: gebraucht wird nur die Helligkeit im Raster des Drucks. */
+async function setNight(img: Raster | null, png: Uint8Array | null) {
+  const side = img ? Math.max(img.width, img.height) : 0;
+  if (img && side > 2400) { img = resize(img, Math.max(1, Math.round(img.width * 2400 / side)), Math.max(1, Math.round(img.height * 2400 / side))); png = null; }
+  state.night = img;
+  state.nightPng = img ? png ?? (await rgbaToPng(toRGBA8(img), img.width, img.height)) : null;
+  state.nightRgba = null;
+  if (!img) nightView.show = false;
+  await compute.setNight(img);
+  syncNight();
+}
+async function chooseNight() {
+  if (!state.image) { toast("Bitte zuerst ein Bild öffnen."); return; }
+  const f = await openFile([{ name: "Bilder", extensions: IMAGE_EXT }]);
+  if (!f) return;
+  let img: Raster;
+  try { img = await decodeImage(f.bytes); } catch { toast("Das Bild konnte nicht gelesen werden.", "err"); return; }
+  const first = !state.night;
+  await setNight(img, isPng(f.bytes) ? f.bytes : null);
+  nightView.show = true;
+  markDirty(); showTab(0);
+  await rebuild();
+  // Beim ersten Mal: Reicht das Filament der Rückplatte nicht für den Ausgleich, ein passendes aus der Bibliothek nehmen
+  const info = state.result?.night?.info;
+  if (first && info && info.comp < state.settings.night_comp - 0.05) {
+    const pick = pickNightFilament(library, info.tdMax);
+    if (pick && pick.td < nightView.filament.td) {
+      nightView.filament = { name: filamentLabel(pick), color: pick.color, td: pick.td };
+      await rebuild();
+      toast(`Für die Rückplatte ist „${filamentLabel(pick)}“ gewählt: Mit diesem Filament lässt sich das Tagbild ganz ausgleichen.`, "ok", 8000);
+    }
+  }
+  syncNight(); updateCompare();
+}
+async function removeNight() {
+  await setNight(null, null);
+  markDirty(); showPreview(); updateCompare();
+  await rebuild();
+}
+function syncNight() {
+  const has = !!state.night;
+  nightPickBtn.replaceChildren(icon("image"), has ? "Anderes Bild …" : "Nachtbild wählen …");
+  nightRemoveBtn.style.display = nightThumb.style.display = nightSettings.style.display = has ? "" : "none";
+  if (has) {
+    const n = state.night!, k = Math.min(1, 96 / Math.max(n.width, n.height));
+    nightThumb.width = Math.max(1, Math.round(n.width * k)); nightThumb.height = Math.max(1, Math.round(n.height * k));
+    const g = nightThumb.getContext("2d")!;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(rasterCanvas(n), 0, 0, nightThumb.width, nightThumb.height);
+  }
+  nightFilBtn.replaceChildren(h("div", { class: "swatch", style: { background: nightView.filament.color } }), h("span", { "data-notr": true }, `${tr(nightView.filament.name)} · TD ${num(nightView.filament.td, 1)}`));
+  fields.night_max_mm!.el.style.display = state.settings.night_auto ? "none" : "";
+  dayNightPill.style.display = has ? "" : "none";
+  for (const [v, b] of dayNightBtns) b.classList.toggle("active", v === nightView.show);
+  renderNightInfo();
+}
+/** Kennzahlen der Rückplatte und was sie für das Nachtbild bedeuten. */
+function nightNotes(n: NightResult): { text: string; warn?: boolean }[] {
+  const i = n.info, pct = (v: number) => num(v * 100, v < 0.0995 ? 1 : 0), s = state.settings;
+  const out: { text: string; warn?: boolean }[] = [
+    { text: `Rückplatte ${num(i.min, 2)} bis ${num(i.max, 1)} mm dick, etwa ${num((n.volume_mm3 / 1000) * 1.24, 0)} g.` },
+    { text: `Das Tagbild lässt ${pct(i.dayMin)} bis ${pct(i.dayMax)} % des Lichts durch. Diese Unterschiede gleicht die Rückplatte zu ${num(i.comp * 100, 0)} % aus.` },
+    { text: `Nachtbild: Die hellste Stelle ist ${num(i.ratio, 1)}-mal so hell wie die dunkelste. Dort kommen ${pct(n.through)} % des Lichts an.` },
+  ];
+  const spread = i.dayMax / Math.max(i.dayMin, 1e-6), fix = num(Math.ceil(i.suggestMax * 10) / 10, 1), td = num(Math.floor(i.tdMax * 10) / 10, 1);
+  if (spread > 12) out.push({ warn: true, text: `Das Tagbild lässt an seinen hellsten Stellen ${num(spread, 0)}-mal so viel Licht durch wie an den dunkelsten. So große Unterschiede lassen sich nur im Groben ausgleichen: Feine Linien und Kanten des Tagbilds scheinen im Gegenlicht durch. Besser eignet sich ein Stapel, der unten mit dem dunkelsten Filament beginnt.` });
+  if (i.comp < s.night_comp - 0.05) out.push({ warn: true, text: s.night_auto
+    ? `Für den vollen Ausgleich müsste die Platte ${num(i.suggestMax, 1)} mm dick sein, mehr als ${NIGHT_AUTO_MAX} mm sind aber nicht sinnvoll. Das Tagbild scheint deshalb im Gegenlicht als Schatten durch. Abhilfe: für die Rückplatte ein Filament mit einem TD von höchstens ${td} mm wählen.`
+    : i.suggestMax <= 8 ? `Für den vollen Ausgleich reicht die Dicke nicht, das Tagbild scheint im Gegenlicht als Schatten durch. Abhilfe: dickste Stelle auf ${fix} mm stellen oder „Dicke automatisch“ einschalten.`
+    : `Für den vollen Ausgleich reicht die Dicke nicht, das Tagbild scheint im Gegenlicht als Schatten durch. Abhilfe: für die Rückplatte ein Filament mit einem TD von höchstens ${td} mm wählen.` });
+  else if (i.ratio < 2.5) out.push({ warn: true, text: `Wenig Kontrast im Nachtbild. Abhilfe: dickste Stelle auf ${fix} mm stellen oder „Dicke automatisch“ einschalten.` });
+  else if (i.max > 4.5 && nightView.filament.td > 3) out.push({ text: "Die Platte wird recht dick. Mit einem Filament mit kleinerem TD (etwa 1,5 bis 3 mm) bleibt sie dünner und das Nachtbild schärfer." });
+  if (n.through < 0.004) out.push({ warn: true, text: "Es kommt sehr wenig Licht durch: Das Nachtbild braucht ein kräftiges Licht (LED-Panel) und einen dunklen Raum. Mehr Licht kommt durch, wenn das unterste Filament des Farbreliefs durchscheinend ist (hoher TD, zum Beispiel Weiß statt Schwarz) und die minimale Höhe klein bleibt." });
+  else out.push({ text: "Die Vorschau zeigt das Nachtbild so, wie es im dunklen Raum vor einem hellen Licht wirkt. Farbige Stellen des Tagbilds färben das Licht; ausgeglichen wird nur ihre Helligkeit." });
+  return out;
+}
+function renderNightInfo() {
+  clear(nightInfo);
+  const n = state.result?.night;
+  if (!state.night || !n) return;
+  for (const l of nightNotes(n)) nightInfo.append(h("p", { class: "hint" + (l.warn ? " warn" : "") }, l.text));
+}
+
 async function loadImageBytes(name: string, bytes: Uint8Array) {
   let img: Raster;
   try { img = await decodeImage(bytes); } catch { toast("Das Bild konnte nicht gelesen werden.", "err"); return; }
@@ -859,6 +1019,7 @@ async function loadExample(ex: Example) {
     state.path = null; state.name = tr(ex.name);
     state.settings = normalizeSettings({ ...ex.settings });
     state.islands.splice(0); islandPanel.render();
+    await setNight(null, null); nightView.filament = storedNightFilament();
     if (ex.stops.length) {
       const lib = new Map(starterLibrary().map((f) => [f.name, f]));
       state.stops.splice(0, state.stops.length, ...ex.stops.map(([n, layer]) => ({ filament: lib.get(n)!, start_layer: layer })).filter((x) => x.filament));
@@ -884,6 +1045,9 @@ async function loadProjectBytes(name: string, bytes: Uint8Array, path: string | 
     state.path = path;
     syncFields();
     if (p.imagePng) await setImage(await decodeImage(p.imagePng), p.imagePng);
+    nightView.filament = p.nightFilament ?? storedNightFilament();
+    nightView.show = false;
+    await setNight(p.nightPng ? await decodeImage(p.nightPng).catch(() => null) : null, p.nightPng);
     stack.render();
     await rebuild();
     resetHistory();
@@ -907,7 +1071,8 @@ async function openProject() {
 }
 
 function projectText() {
-  return serializeProject({ name: state.name, image: state.image, imagePng: state.imagePng, settings: state.settings, stops: state.stops, islands: state.islands });
+  return serializeProject({ name: state.name, image: state.image, imagePng: state.imagePng, settings: state.settings, stops: state.stops, islands: state.islands,
+    nightPng: state.nightPng, nightFilament: state.night ? nightView.filament : null });
 }
 
 async function saveProject(saveAs: boolean) {
@@ -932,6 +1097,8 @@ async function newProject() {
   state.islands.splice(0); islandPanel.render();
   state.stops.forEach((s, i) => (s.start_layer = i + 1));
   await compute.setImage(null);
+  nightView.filament = storedNightFilament();
+  await setNight(null, null);
   viewPreview.clear(); viewOriginal.clear(); view3d.clear();
   syncFields(); stack.render(); refreshAnalysis(); showTab(0);
   step = 0; renderSteps(); viewPreview.setCompare(null);
@@ -948,7 +1115,7 @@ async function exportAll() {
   try {
     compute.setIslands(state.islands);
     const r = await compute.exportAll(state.settings, activeStops(), state.name,
-      { target: slicer.target, template: slicer.template, changeMode: slicer.changeMode, pauseText: tr("Filament wechseln: {}") });
+      { target: slicer.target, template: slicer.template, changeMode: slicer.changeMode, pauseText: tr("Filament wechseln: {}") }, nightLight());
     const stl = new Uint8Array(r.stl);
     const path = await saveFile(`${state.name}.stl`, stl, [{ name: "STL", extensions: ["stl"] }]);
     if (!path) return;
@@ -960,12 +1127,25 @@ async function exportAll() {
       await saveSibling(path, fileSuffix("_vorschau.png"), png)];
     const ad = assistData();
     if (ad) files.push(await saveSibling(path, fileSuffix("_druckassistent.html"), assistantHtml(ad)));
+    // Tag-und-Nacht-Bild: die Rückplatte als zweites Teil und ihre Vorschau im Gegenlicht
+    const night = r.night;
+    let nightFile = "";
+    if (night) {
+      files.push(await saveSibling(path, fileSuffix("_nachtbild.stl"), new Uint8Array(night.stl)));
+      nightFile = files[files.length - 1].split(/[\\/]/).pop()!;
+      files.push(await saveSibling(path, fileSuffix("_nachtvorschau.png"), await rgbaToPng(new Uint8ClampedArray(night.preview), r.width, r.height)));
+    }
     if (step < 4) { step = 4; renderSteps(); }
     const close = modal("Export fertig", h("div", null,
       h("p", { style: { marginTop: 0 } }, "Geschrieben:"),
       h("ul", { style: { paddingLeft: "18px", lineHeight: "1.7" } }, ...files.map((f) => h("li", null, f.split(/[\\/]/).pop()!))),
       h("p", { class: "hint" }, `STL ${(stl.length / 1e6).toFixed(1)} MB, 3MF ${(r.threemf.byteLength / 1e6).toFixed(1)} MB.`),
       ...slicerNotes(r.threemfInfo),
+      ...(night ? [h("p", { class: "hint" }, h("b", null, "Tag-und-Nacht-Bild: "),
+        h("span", { "data-notr": true }, tr("„{}“ ist die Rückplatte.").replace("{}", nightFile) + " "),
+        `Sie ist ${num(night.info.min, 2)} bis ${num(night.info.max, 1)} mm dick und wiegt etwa ${num((night.volume_mm3 / 1000) * 1.24, 0)} g.`, " ",
+        h("span", { "data-notr": true }, tr("Einfarbig mit {} drucken, 100 % Füllung, glatte Seite auf dem Druckbett.").replace("{}", tr(nightView.filament.name)) + " "),
+        "Nach dem Druck umdrehen und mit der glatten Seite hinter das Farbrelief legen, das Relief der Rückplatte zeigt zum Licht. Der kleine erhabene Punkt gehört nach oben links, wenn du von vorn auf das Bild schaust. Für das Umdrehen ist die STL bereits gespiegelt: nicht noch einmal spiegeln. Die 3MF und die Farbwechsel gehören nur zum Farbrelief.")] : []),
       h("pre", { style: { background: "var(--bg)", padding: "10px", borderRadius: "8px", maxHeight: "260px", overflow: "auto", fontSize: "12px" } }, trLines(r.report))),
       [button("Slicer und AMS …", () => { close(); slicerSetup(); }, { icon: "layers" }),
         button("Druck-Assistent öffnen", () => { close(); showAssistant(); }, { icon: "layers" }), button("OK", () => close(), { cls: "primary" })]);
@@ -1019,6 +1199,9 @@ async function measureTd(f: Filament | null) {
   if (lithoView.filament.name === filamentLabel(r.filament) && lithoView.filament.color.toLowerCase() === r.filament.color.toLowerCase()) {
     lithoView.filament = { ...lithoView.filament, td: r.td }; store.set("lithoFilament", lithoView.filament); syncLitho();
   }
+  if (nightView.filament.name === filamentLabel(r.filament) && nightView.filament.color.toLowerCase() === r.filament.color.toLowerCase()) {
+    nightView.filament = { ...nightView.filament, td: r.td }; store.set("nightFilament", nightView.filament); syncNight();
+  }
   if (inStack.length) { stack.render(); markDirty(); }
   if (state.image) schedule(0);
   refreshAnalysis();
@@ -1034,8 +1217,10 @@ async function exportOriginal() {
 async function exportPreview() {
   const r = state.result;
   if (!r || !state.previewRgba) { toast("Noch keine Vorschau berechnet."); return; }
-  const png = await rgbaToPng(state.previewRgba, r.width, r.height);
-  const p = await saveFile(state.name + fileSuffix("_vorschau.png"), png, [{ name: "PNG", extensions: ["png"] }]);
+  // gespeichert wird, was die Vorschau gerade zeigt: das Tagbild oder das Nachtbild im Gegenlicht
+  const nightShown = nightView.show && !!state.nightRgba;
+  const png = nightShown ? await rgbaToPng(state.nightRgba!, r.width, r.height) : await rgbaToPng(state.previewRgba, previewDim[0], previewDim[1]);
+  const p = await saveFile(state.name + fileSuffix(nightShown ? "_nachtvorschau.png" : "_vorschau.png"), png, [{ name: "PNG", extensions: ["png"] }]);
   if (p) toast("Vorschaubild gespeichert.", "ok");
 }
 
@@ -1119,4 +1304,4 @@ resetHistory();
 autoCheckForUpdate(VERSION, () => state.dirty && !!state.image, () => saveProject(false));
 
 // für Tests/Fehlersuche
-(window as any).chromalith = { showUpdate, state, rebuild, loadExample, EXAMPLES, loadProjectBytes, loadImageBytes, editFilament, fromRGBA8 };
+(window as any).chromalith = { showUpdate, state, rebuild, loadExample, EXAMPLES, loadProjectBytes, loadImageBytes, editFilament, fromRGBA8, setNight, nightView, projectText };

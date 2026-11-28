@@ -1,5 +1,5 @@
 /** Schnittstelle zum Rechen-Worker (Promise-basiert). */
-import type { ColorStop, HeightSettings, LithoLight, Raster, ThreeMfInfo, ThreeMfOptions } from "./core";
+import type { ColorStop, HeightSettings, LithoLight, NightInfo, NightLight, Raster, ThreeMfInfo, ThreeMfOptions } from "./core";
 
 const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
 let nextId = 1;
@@ -30,7 +30,10 @@ export interface PreviewResult {
   stackLayers: number;
   simStops: ColorStop[];
   mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; orig: ArrayBuffer; top: ArrayBuffer; size: [number, number] };
+  /** Tag-und-Nacht-Bild: Vorschau im Gegenlicht und Kennzahlen der Rückplatte */
+  night?: NightResult;
 }
+export interface NightResult { preview: ArrayBuffer; info: NightInfo; through: number; volume_mm3: number }
 
 let islandState: unknown[] = [];
 /** Farbinseln für alle folgenden Berechnungen setzen. */
@@ -39,10 +42,13 @@ const withIslands = (m: any) => ({ ...m, islands: islandState });
 
 export const setImage = (image: Raster | null) =>
   call<{ palette: { color: string; share: number }[] }>({ type: "image", image });
-export const preview = (settings: HeightSettings, stops: ColorStop[]) => call<PreviewResult>({ type: "preview", settings, stops });
+/** Zweites Bild für das Tag-und-Nacht-Bild setzen (null = keins). */
+export const setNight = (image: Raster | null) => call<{}>({ type: "night", image });
+export const preview = (settings: HeightSettings, stops: ColorStop[], night: NightLight | null = null) => call<PreviewResult>({ type: "preview", settings, stops, night });
 export const autoDistribute = (settings: HeightSettings, stops: ColorStop[]) => call<{ stops: ColorStop[] }>({ type: "auto", settings, stops });
-export const exportAll = (settings: HeightSettings, stops: ColorStop[], name: string, slicer: ThreeMfOptions = {}) =>
-  call<{ stl: ArrayBuffer; threemf: ArrayBuffer; threemfInfo: ThreeMfInfo; report: string; json: string; preview: ArrayBuffer; width: number; height: number }>({ type: "export", settings, stops, name, slicer });
+export const exportAll = (settings: HeightSettings, stops: ColorStop[], name: string, slicer: ThreeMfOptions = {}, night: NightLight | null = null) =>
+  call<{ stl: ArrayBuffer; threemf: ArrayBuffer; threemfInfo: ThreeMfInfo; report: string; json: string; preview: ArrayBuffer; width: number; height: number;
+    night: (NightResult & { stl: ArrayBuffer; triangles: number }) | null }>({ type: "export", settings, stops, name, slicer, night });
 export const previewImage = (settings: HeightSettings, stops: ColorStop[], maxSide = 520) =>
   call<{ width: number; height: number; preview: ArrayBuffer }>({ type: "preview", settings, stops, maxSide, lite: true });
 export const suggest = (settings: HeightSettings, stops: ColorStop[], library: ColorStop["filament"][], count: number, mode: string, progress?: (f: number) => void) =>

@@ -162,6 +162,15 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 
 .view-tools { position: absolute; left: 14px; top: 12px; display: flex; gap: 8px; z-index: 4; }
 .view-tools .btn { background: #15161cdd; }
 .view-tools .btn.on { border-color: var(--accent); color: var(--accent-2); }
+.view-tools .mode-pill { background: #15161cdd; }
+.view-tools .mode-pill button { padding: 5px 12px; font-size: 12px; }
+
+/* Tag-und-Nacht-Bild */
+.night-pick { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.night-pick .night-buttons { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.night-thumb { max-width: 96px; max-height: 96px; border-radius: 8px; border: 1px solid var(--line-2); flex: none; }
+.night-info { margin-top: 10px; display: grid; gap: 6px; }
+.night-info p { margin: 0; }
 .cmp-labels { position: absolute; top: 14px; right: 150px; display: none; gap: 8px; z-index: 4; font-size: 12px; color: var(--muted); }
 
 /* Schritt-Leiste */

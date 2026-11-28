@@ -92,5 +92,6 @@ export function watchDom() {
 }
 
 /** Endungen der exportierten Begleitdateien in der Sprache der Oberfläche. */
-const FILES: Record<string, string> = { _farbwechsel: "_colour_changes", _vorschau: "_preview", _druckassistent: "_print_assistant", _lithophanie: "_lithophane" };
+const FILES: Record<string, string> = { _farbwechsel: "_colour_changes", _vorschau: "_preview", _druckassistent: "_print_assistant", _lithophanie: "_lithophane",
+  _nachtbild: "_night_image", _nachtvorschau: "_night_preview" };
 export const fileSuffix = (s: string) => (lang === "de" ? s : s.replace(/^_[a-z]+/, (m) => FILES[m] ?? m));

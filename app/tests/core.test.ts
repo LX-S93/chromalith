@@ -804,3 +804,191 @@ describe("TD-Kalibrierung", () => {
     expect(roundTd(0.48)).toBe(0.5); expect(roundTd(2.34)).toBe(2.3);
   });
 });
+
+import { NIGHT_AUTO_MAX, NIGHT_GOOD_RATIO, NIGHT_MARK, NIGHT_MIN_CONTRAST, nightMark, OPACITY_K, LITHO_SPECTRUM, nightPlate, nightSimulate, nightTarget, nightThickness, pickNightFilament, stackTransmission } from "../src/core";
+
+describe("Tag-und-Nacht-Bild", () => {
+  const lumOf = (a: ArrayLike<number>, i: number) => 0.2126 * a[i * 3] + 0.7152 * a[i * 3 + 1] + 0.0722 * a[i * 3 + 2];
+  /** Bild aus zwei Hälften: links schwarz, rechts weiß */
+  const halves = (w = 80, h = 40): Raster => {
+    const data = new Float32Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) { data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = i % w < w / 2 ? 0 : 1; data[i * 4 + 3] = 1; }
+    return { width: w, height: h, data };
+  };
+  const flat = (v: number, w = 40, h = 20): Raster => {
+    const data = new Float32Array(w * h * 4).fill(v);
+    for (let i = 0; i < w * h; i++) data[i * 4 + 3] = 1;
+    return { width: w, height: h, data };
+  };
+
+  it("Durchlässigkeit des Tagbilds: dick = dunkel, Lagen multiplizieren sich, außerhalb der Form nichts", () => {
+    const s = S();
+    const hm = buildHeightmap(gradient(), s, { mode: "bright_high" });
+    const one = stackTransmission(hm, [{ filament: GREY, start_layer: 1 }]);
+    const last = hm.width - 1;
+    expect(lumOf(one, 0)).toBeGreaterThan(lumOf(one, last));
+    // neutrale Filamente: reine Abschwächung nach dem TD (bei t = TD noch 5 %); je heller das Filament, desto mehr Blau streut es weg
+    const light = ((0x80 / 255 + 0.055) / 1.055) ** 2.4;
+    for (let c = 0; c < 3; c++) expect(one[last * 3 + c]).toBeCloseTo(Math.exp(-OPACITY_K * (1 + (LITHO_SPECTRUM[c] - 1) * light) * hm.heights[last] / GREY.td), 5);
+    const dark = stackTransmission(hm, [{ filament: BLACK, start_layer: 1 }]), bright = stackTransmission(hm, [{ filament: WHITE, start_layer: 1 }]);
+    expect(dark[2] / dark[0]).toBeCloseTo(1, 5);
+    expect(bright[last * 3 + 2] / bright[last * 3]).toBeLessThan(0.8);
+    const two = stackTransmission(hm, [{ filament: GREY, start_layer: 1 }, { filament: WHITE, start_layer: 5 }]);
+    const z = s.base_layer_mm + 3 * s.layer_height_mm, h = hm.heights[last];
+    expect(h).toBeGreaterThan(z);
+    expect(two[last * 3 + 1]).toBeCloseTo(Math.exp(-OPACITY_K * (z / GREY.td + (h - z) / WHITE.td)), 5);
+    expect(lumOf(two, last)).toBeGreaterThan(lumOf(one, last));
+    // farbiges Filament färbt das Licht, ohne die Helligkeit zusätzlich zu mindern
+    const red = stackTransmission(hm, [{ filament: RED, start_layer: 1 }]);
+    expect(red[last * 3]).toBeGreaterThan(red[last * 3 + 1] * 5);
+    const round = buildHeightmap(gradient(60, 60), S({ shape: "circle" }), { mode: "bright_high" });
+    const T = stackTransmission(round, [{ filament: GREY, start_layer: 1 }]);
+    expect(round.mask![0]).toBe(0); expect(lumOf(T, 0)).toBe(0);
+  });
+
+  it("das Nachtbild füllt die Fläche des Tagbilds und wird mittig beschnitten", () => {
+    const wide = nightTarget(halves(200, 50), 20, 20);
+    expect(wide[0]).toBeLessThan(0.02); expect(wide[19]).toBeGreaterThan(0.98);
+    // hochkant: oben schwarz, unten weiß; aus der Mitte geschnitten bleibt beides sichtbar
+    const tall: Raster = { width: 30, height: 120, data: new Float32Array(30 * 120 * 4) };
+    for (let i = 0; i < 30 * 120; i++) { tall.data[i * 4] = tall.data[i * 4 + 1] = tall.data[i * 4 + 2] = Math.floor(i / 30) < 60 ? 0 : 1; tall.data[i * 4 + 3] = 1; }
+    const t = nightTarget(tall, 24, 12);
+    expect(t[0]).toBeLessThan(0.02); expect(t[24 * 11]).toBeGreaterThan(0.98);
+    // durchsichtige Stellen gelten als dunkel
+    const clear = nightTarget({ width: 4, height: 4, data: new Float32Array(64).fill(0) }, 4, 4);
+    expect(Math.max(...clear)).toBe(0);
+  });
+
+  it("die Rückplatte gleicht die Helligkeitsunterschiede des Tagbilds aus", () => {
+    const backTd = 2, kB = OPACITY_K / backTd;
+    const s = S({ width_mm: 40, night_min_mm: 0.6, night_max_mm: 6, night_auto: false, night_comp: 1 });
+    const hm = buildHeightmap(halves(), s, { mode: "bright_high" });
+    const stops = [{ filament: GREY, start_layer: 1 }];
+    const target = new Float32Array(hm.width * hm.height).fill(0.5);
+    const { t, info } = nightThickness(hm, stops, target, s, backTd);
+    const T = stackTransmission(hm, stops);
+    const total = (i: number) => lumOf(T, i) * Math.exp(-kB * t[i]);
+    const y = Math.floor(hm.height / 2) * hm.width, L = y + 4, R = y + hm.width - 5;
+    // links ist das Tagbild dünn und hell: dort ist die Rückplatte dicker, zusammen kommt überall gleich viel Licht an
+    expect(lumOf(T, L)).toBeGreaterThan(lumOf(T, R) * 5);
+    expect(t[L]).toBeGreaterThan(t[R] + 1);
+    expect(total(L) / total(R)).toBeCloseTo(1, 2);
+    expect(info.comp).toBeCloseTo(1, 5);
+    expect(info.dayMax).toBeCloseTo(lumOf(T, L), 4); expect(info.dayMin).toBeCloseTo(lumOf(T, R), 4);
+    // ohne Ausgleich bleibt der Schatten des Tagbilds stehen
+    const off = nightThickness(hm, stops, target, { ...s, night_comp: 0 }, backTd);
+    expect(off.t[L]).toBeCloseTo(off.t[R], 5);
+    expect(off.info.comp).toBe(0);
+    expect(off.info.ratio).toBeCloseTo(Math.exp(kB * 5.4), 3);
+  });
+
+  it("zu wenig Dicke: dem Nachtbild bleibt ein Mindestanteil, der Vorschlag reicht für beides", () => {
+    const backTd = 2, kB = OPACITY_K / backTd;
+    const s = S({ width_mm: 40, night_min_mm: 0.6, night_max_mm: 1.6, night_auto: false, night_comp: 1 });
+    const hm = buildHeightmap(halves(), s, { mode: "bright_high" });
+    const stops = [{ filament: GREY, start_layer: 1 }];
+    const target = nightTarget(gradient(), hm.width, hm.height);
+    const { t, info } = nightThickness(hm, stops, target, s, backTd);
+    expect(info.comp).toBeGreaterThan(0.2); expect(info.comp).toBeLessThan(0.5);
+    expect(info.ratio).toBeCloseTo(Math.exp(kB * NIGHT_MIN_CONTRAST * 1.0), 3);
+    for (const v of t) { expect(v).toBeGreaterThanOrEqual(0.6 - 1e-6); expect(v).toBeLessThanOrEqual(1.6 + 1e-6); }
+    expect(info.suggestMax).toBeGreaterThan(3);
+    const better = nightThickness(hm, stops, target, { ...s, night_max_mm: info.suggestMax }, backTd).info;
+    expect(better.comp).toBeCloseTo(1, 4);
+    expect(better.ratio).toBeCloseTo(NIGHT_GOOD_RATIO, 2);
+    // „Dicke automatisch“ nimmt genau diesen Vorschlag (auf 0,1 mm aufgerundet) …
+    const auto = nightThickness(hm, stops, target, { ...s, night_auto: true }, backTd);
+    expect(auto.info.max).toBeCloseTo(Math.ceil(info.suggestMax * 10) / 10, 5);
+    expect(auto.info.comp).toBeCloseTo(1, 4);
+    expect(auto.info.ratio).toBeGreaterThanOrEqual(NIGHT_GOOD_RATIO - 1e-3);
+    expect(Math.max(...auto.t)).toBeCloseTo(auto.info.max, 4);
+    // … aber nie mehr als die Obergrenze: mit sehr durchscheinendem Filament reicht es dann nicht für den vollen Ausgleich
+    const thick = nightThickness(hm, stops, target, { ...s, night_auto: true }, 8).info;
+    expect(thick.max).toBe(NIGHT_AUTO_MAX);
+    expect(thick.comp).toBeLessThan(1);
+    // … und nennt den TD, mit dem es reichen würde: unabhängig vom gerade gewählten Filament
+    expect(thick.tdMax).toBeCloseTo(auto.info.tdMax, 3);
+    expect(thick.tdMax).toBeLessThan(8); expect(thick.tdMax).toBeGreaterThan(backTd);
+    const fits = nightThickness(hm, stops, target, { ...s, night_auto: true }, thick.tdMax - 0.01).info;
+    expect(fits.comp).toBeCloseTo(1, 4); expect(fits.max).toBeLessThanOrEqual(NIGHT_AUTO_MAX);
+    // passendes Filament aus der Bibliothek: hell, farbneutral, nicht zu durchscheinend; eigene zuerst
+    const lib = starterLibrary();
+    expect(pickNightFilament(lib, thick.tdMax)!.name).toBe("Grau hell");
+    expect(pickNightFilament(lib, 6)!.name).toBe("Weiß");
+    expect(pickNightFilament(lib, 1.5)).toBeNull();
+    expect(pickNightFilament([...lib, makeFilament({ id: "x", name: "Silber", color: "#c8c8c8", td: 1.2, owned: true })], 6)!.name).toBe("Silber");
+  });
+
+  it("Nachtbild: hell = dünn, die Vorschau im Gegenlicht zeigt das Nachtbild", () => {
+    const s = S({ width_mm: 40, night_min_mm: 0.6, night_max_mm: 3, night_auto: false });
+    const hm = buildHeightmap(flat(0.5, 80, 40), s, { mode: "bright_high" });
+    const stops = [{ filament: GREY, start_layer: 1 }, { filament: WHITE, start_layer: 6 }];
+    const target = nightTarget(gradient(), hm.width, hm.height);
+    const { t, info } = nightThickness(hm, stops, target, s, 4);
+    const y = Math.floor(hm.height / 2) * hm.width, L = y, R = y + hm.width - 1;
+    expect(t[L]).toBeCloseTo(3, 1); expect(t[R]).toBeCloseTo(0.6, 1);
+    expect(info.comp).toBe(1); expect(info.dayMin).toBeCloseTo(info.dayMax, 6);
+    const sim = nightSimulate(hm, stops, t, { filamentColor: "#f2f1ec", td: 4, light: "#fff3e4", intensity: 1 });
+    expect(lumOf(sim.rgb, R)).toBeGreaterThan(lumOf(sim.rgb, L) + 0.2);
+    expect(lumOf(sim.rgb, R)).toBeGreaterThan(0.7);
+    // so viel Licht kommt an der hellsten Stelle wirklich an: Tagbild mal dünnste Stelle der Rückplatte
+    const T = stackTransmission(hm, stops);
+    expect(sim.through).toBeLessThan(lumOf(T, R)); expect(sim.through).toBeGreaterThan(lumOf(T, R) * 0.4);
+  });
+
+  it("Rückplatte: gleicher Umriss wie das Tagbild, gespiegelt zum Umdrehen, geschlossenes Netz", () => {
+    const s = S({ width_mm: 40, shape: "circle", hole_mm: 6, night_min_mm: 0.8, night_max_mm: 2.4, night_auto: false });
+    const hm = buildHeightmap(gradient(80, 80), s, { mode: "bright_high" });
+    const stops = [{ filament: GREY, start_layer: 1 }];
+    const { t } = nightThickness(hm, stops, nightTarget(halves(), hm.width, hm.height), s, 3);
+    const plate = nightPlate(hm, t);
+    const w = hm.width, y = Math.floor(hm.height / 2) * w, x = Math.floor(w / 4);
+    // links ist das Nachtbild schwarz (dick) und das Tagbild dünn: beides macht die Platte dort dick
+    expect(t[y + x]).toBeGreaterThan(t[y + w - 1 - x] + 0.5);
+    // gespiegelt: Die Platte wird umgedreht hinter das Tagbild gelegt, dann liegt jede Stelle wieder an ihrem Platz
+    expect(plate.heights[y + w - 1 - x]).toBe(t[y + x]);
+    expect(nightPlate(hm, t, false, false).heights[y + x]).toBe(t[y + x]);
+    for (let i = 0; i < w; i++) expect(plate.mask![y + i]).toBe(hm.mask![y + w - 1 - i]);
+    expect(sizeMm(plate)).toEqual(sizeMm(hm));
+    const m = heightmapToMesh(plate);
+    expect(watertight(m.faces)).toBe(true);
+    expect(meshVolume(m)).toBeGreaterThan(0);
+    let zMax = 0;
+    for (let i = 2; i < m.vertices.length; i += 3) zMax = Math.max(zMax, m.vertices[i]);
+    // die Marke ist der höchste Punkt: 0,6 mm über der dicksten Stelle
+    expect(zMax).toBeCloseTo(2.4 + NIGHT_MARK.h, 4);
+    const plain = heightmapToMesh(nightPlate(hm, t, true, false));
+    let zPlain = 0;
+    for (let i = 2; i < plain.vertices.length; i += 3) zPlain = Math.max(zPlain, plain.vertices[i]);
+    expect(zPlain).toBeLessThanOrEqual(2.4 + 1e-5); expect(zPlain).toBeGreaterThan(2.2);
+    // sie sitzt in der Form, von vorn gesehen oben links, und damit auf der gespiegelten Platte oben rechts
+    const mk = nightMark(hm)!;
+    expect(hm.mask![mk.y * w + mk.x]).toBe(1);
+    expect(mk.x).toBeLessThan(w / 2); expect(mk.y).toBeLessThan(hm.height / 2);
+    expect(plate.heights[mk.y * w + (w - 1 - mk.x)]).toBeCloseTo(2.4 + NIGHT_MARK.h, 5);
+    expect(plate.heights[mk.y * w + mk.x]).toBeLessThanOrEqual(2.4 + 1e-5);
+    const rect = buildHeightmap(gradient(), S({ width_mm: 40 }), { mode: "bright_high" });
+    // Rechteck: 1,2 mm Radius und 1 mm Abstand zum Rand, bei 0,5 mm Raster also 5 Punkte von beiden Kanten
+    expect(nightMark(rect)).toEqual({ x: 5, y: 5 });
+    expect(nightMark({ ...rect, width: 6, height: 6, heights: new Float32Array(36), mask: null })).toBeNull();
+    // ein Umriss, der nicht spiegelgleich ist, wird mitgespiegelt
+    const odd = { ...hm, mask: Uint8Array.from(hm.mask!) };
+    odd.mask[y + 1] = 0; odd.mask[y + 2] = 0;
+    const op = nightPlate(odd, t);
+    expect(op.mask![y + w - 2]).toBe(0); expect(op.mask![y + 1]).toBe(hm.mask![y + w - 2]);
+  });
+
+  it("Projekt: Nachtbild und Filament der Rückplatte bleiben erhalten, alte Projekte haben keins", () => {
+    const p: Project = { name: "t", image: null, imagePng: new Uint8Array([137, 80, 78, 71, 1]), settings: S({ night_max_mm: 4.2, night_comp: 0.5 }),
+      stops: [{ filament: WHITE, start_layer: 1 }], nightPng: new Uint8Array([137, 80, 78, 71, 9, 8, 7]), nightFilament: { name: "Grau", color: "#808080", td: 1.5 } };
+    const q = parseProject(serializeProject(p));
+    expect(Array.from(q.nightPng!)).toEqual(Array.from(p.nightPng!));
+    expect(q.nightFilament).toEqual(p.nightFilament);
+    expect([q.settings.night_max_mm, q.settings.night_comp]).toEqual([4.2, 0.5]);
+    const old = parseProject(JSON.stringify({ format: "chromalith-project", version: 1, name: "alt", settings: { width_mm: 120 }, plan: [], image_png: null }));
+    expect(old.nightPng).toBeNull(); expect(old.nightFilament).toBeNull();
+    expect([old.settings.night_min_mm, old.settings.night_max_mm, old.settings.night_auto, old.settings.night_comp]).toEqual([0.6, 3, true, 1]);
+    // ohne Nachtbild steht auch nichts davon in der Datei
+    expect(serializeProject({ ...p, nightPng: null })).not.toContain("night_png");
+  });
+});

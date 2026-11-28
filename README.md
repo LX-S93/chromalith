@@ -58,6 +58,8 @@ by size and SHA-256 before it is started.
 - Filament library with import, plus optional read-only sync with [Spoolman](https://github.com/Donkie/Spoolman)
 - **TD calibration:** print a step wedge, photograph it backlit and let Chromalith derive the TD, or state the
   first step that no light shines through
+- **Day-and-night image:** a second image that only appears when the print is lit from behind, built as a
+  single-colour back plate behind the colour relief, with a preview of both views
 - **Lithophanes:** flat, curved, cylinder (lampshade) and sphere (ornament with hanging loop and optional
   screw cap for the light); place, scale and repeat the image on the body without distortion; light simulation
   with a visible lamp and different light sources; STL export
@@ -133,6 +135,39 @@ is more precise than the estimate by eye, because it evaluates the whole curve.
 Preview colour model: layers are stacked bottom to top; a layer of thickness *t* covers
 `1 − exp(−ln(20)·t/TD)` (95 % at *t* = TD). This is an approximation – real prints differ depending on
 light and filament.
+
+## Day-and-night image
+
+In daylight you see the colour relief; with a light behind it a second, hidden image appears. Chromalith builds
+this from **two parts**: the colour relief as usual and a single-colour **back plate** whose thickness carries
+the night image (thin = bright, like a lithophane).
+
+1. Build the colour relief as usual, then open **Day-and-night image** on the left and choose the night image.
+   It fills the area of the day image; whatever sticks out is cropped around the centre.
+2. Switch the preview between **Day** and **Night**. The night view shows both plates lit from behind, with the
+   exposure adjusted to the brightest point as a camera would do.
+3. **Export** additionally writes `<name>_night_image.stl` and a backlit preview. Print the back plate in one
+   colour with 100% infill, smooth side on the bed. Then turn it over and put its smooth side behind the colour
+   relief, for example in a light frame. The STL is already mirrored for this, and a small raised dot marks the
+   corner that belongs at the top left when you look at the picture from the front.
+
+The colour relief itself lets more light through where it is thin. The back plate **compensates** for this
+(thicker where the relief is brighter), so that the night image appears and not a shadow of the day image. With
+"Automatic thickness" the plate becomes just thick enough for this compensation plus a strong contrast of the
+night image, up to 6 mm. If that is not enough with the chosen filament, Chromalith names the TD that would be
+and picks a matching light, neutral filament from the library the first time.
+
+What to expect, honestly:
+
+- Only brightness is compensated. Coloured areas of the day image still tint the light, so the day image stays
+  visible as a faint colour pattern.
+- It works best with a stack that **starts with the darkest filament at the bottom**: the relief then lets a
+  similar, small amount of light through everywhere. If translucent layers lie below an opaque one, some places
+  let through many times more light than others; fine lines and edges of the day image then show through, and
+  Chromalith warns about it.
+- Little light arrives at the front (often around 1%), so the night image needs a strong, even light such as an
+  LED panel and a dark room.
+- The preview is a simulation based on the TD values of your filaments. Measured TD values make it more reliable.
 
 ## Support
 

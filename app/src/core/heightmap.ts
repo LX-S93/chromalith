@@ -88,6 +88,13 @@ export interface HeightSettings {
   /** Wandstärke von Kugel/Zylinder außerhalb des Bildes */
   litho_rest_mm: number;
   litho_cap_mm: number;
+  /** Tag-und-Nacht-Bild: Dicke der Rückplatte an hellen und dunklen Stellen des Nachtbilds (siehe night.ts) */
+  night_min_mm: number;
+  night_max_mm: number;
+  /** dickste Stelle selbst wählen: so, dass Ausgleich und Kontrast des Nachtbilds Platz haben */
+  night_auto: boolean;
+  /** wie weit die Rückplatte die Helligkeitsunterschiede des Tagbilds ausgleicht, 0 bis 1 */
+  night_comp: number;
 }
 
 export const DEFAULT_SETTINGS: HeightSettings = {
@@ -100,6 +107,7 @@ export const DEFAULT_SETTINGS: HeightSettings = {
   litho: false, litho_form: "flat", litho_min_mm: 0.6, litho_max_mm: 2.6, litho_angle_deg: 120, litho_band_deg: 55,
   litho_hole_mm: 30, litho_loop: true, litho_invert: false,
   litho_img_deg: 150, litho_img_x: 0, litho_img_y: 0, litho_repeat: false, litho_height_mm: 0, litho_cap: false, litho_cap_mm: 26, litho_rest_mm: 2.2,
+  night_min_mm: 0.6, night_max_mm: 3, night_auto: true, night_comp: 1,
 };
 
 export function normalizeSettings(d: Partial<HeightSettings> | undefined): HeightSettings {

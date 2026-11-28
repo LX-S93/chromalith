@@ -5,11 +5,14 @@ import {
   autoDistribute, buildProject, write3mf, effectiveStops, type Island, colorError, labSample, prepareImage, suggestStack, type SuggestMode, type Filament, downsample, effectiveMode, filamentUsage, heightmapToMesh, imagePalette, layerCount,
   lithoMesh, lithoThickness, lithoSimulate, meshVolume, type LithoLight,
   maxZ, minLayer, planJson, planReport, simulate, sizeMm, writeStl, type ColorStop, type DigitRenderer,
+  nightPlate, nightSimulate, nightTarget, nightThickness, type HeightMap, type NightLight,
   type HeightSettings, type Project, type Raster,
 } from "./core";
 
 let image: Raster | null = null;
 let imageVersion = 0;
+/** Tag-und-Nacht-Bild: das zweite Bild, das im Gegenlicht erscheint */
+let night: Raster | null = null;
 let cache: { key: string; hm: ReturnType<typeof buildProject>; small?: ReturnType<typeof downsample>; mesh?: ReturnType<typeof heightmapToMesh> } | null = null;
 
 const renderDigits: DigitRenderer = (w, h, digits, sizePx) => {
@@ -42,6 +45,17 @@ function previewSettings(s: HeightSettings, maxSide: number): HeightSettings {
   return { ...s, pixel_size_mm: Math.max(s.pixel_size_mm, s.width_mm / maxSide) };
 }
 
+/** Rückplatte für das Nachtbild: Dicke je Punkt, Vorschau im Gegenlicht und Kennzahlen. */
+function nightResult(hm: HeightMap, stops: ColorStop[], s: HeightSettings, light: NightLight) {
+  const { t, info, day } = nightThickness(hm, stops, nightTarget(night!, hm.width, hm.height), s, light.td);
+  const sim = nightSimulate(hm, stops, t, light, day);
+  let vol = 0;
+  for (let i = 0; i < t.length; i++) if (!hm.mask || hm.mask[i]) vol += t[i];
+  return { t, info, through: sim.through, preview: toRGBA(sim.rgb, hm.width * hm.height), volume_mm3: vol * hm.pixel_size_mm * hm.pixel_size_mm };
+}
+/** Die Einstellungen der Rückplatte ändern das Farbrelief nicht: sie gehören nicht in den Schlüssel des Zwischenspeichers. */
+const reliefKey = (s: HeightSettings) => { const { night_min_mm, night_max_mm, night_auto, night_comp, ...rest } = s; return rest; };
+
 self.onmessage = (ev: MessageEvent) => {
   const { id, type } = ev.data;
   if (ev.data.islands) islands = ev.data.islands;
@@ -50,13 +64,16 @@ self.onmessage = (ev: MessageEvent) => {
     if (type === "image") {
       image = ev.data.image; imageVersion++; cache = null;
       result = { palette: image ? imagePalette(rgbOf(image), 10) : [] };
+    } else if (type === "night") {
+      night = ev.data.image;
+      result = {};
     } else if (type === "preview") {
       const s = previewSettings(ev.data.settings, ev.data.maxSide ?? 1200);
       const p = project(s, ev.data.stops);
       // Höhenkarte und Netz hängen im Helligkeitsmodus nicht vom Stapel ab: beim Verschieben der Wechsel
       // wird nur neu eingefärbt (schnell genug für eine Live-Vorschau).
       const mode = effectiveMode(p);
-      const key = mode !== "color" && !islands.length ? JSON.stringify([imageVersion, s, mode]) : "";
+      const key = mode !== "color" && !islands.length ? JSON.stringify([imageVersion, reliefKey(s), mode]) : "";
       const hit = key !== "" && cache?.key === key ? cache : null;
       const hm = hit ? hit.hm : buildProject(p, renderDigits, s);
       if (!hit) cache = key ? { key, hm } : null;
@@ -94,6 +111,11 @@ self.onmessage = (ev: MessageEvent) => {
         mesh: { vertices: mesh.vertices.buffer, faces: mesh.faces.buffer, colors: colors.buffer, orig: orig.buffer, top: mesh.topIndex.buffer, size: sizeMm(small) },
       };
       transfer = [preview.buffer, mesh.vertices.buffer, mesh.faces.buffer, colors.buffer, orig.buffer, mesh.topIndex.buffer];
+      if (night && ev.data.night) {
+        const nr = nightResult(hm, est, s, ev.data.night);
+        result.night = { preview: nr.preview.buffer, info: nr.info, through: nr.through, volume_mm3: nr.volume_mm3 };
+        transfer.push(nr.preview.buffer);
+      }
     } else if (type === "litho") {
       if (!image) throw new Error("Kein Bild geladen.");
       const full = ev.data.settings as HeightSettings, light = ev.data.light as LithoLight;
@@ -138,10 +160,20 @@ self.onmessage = (ev: MessageEvent) => {
       const stl = writeStl(mesh, `Chromalith ${ev.data.name}`);
       const sim = simulate(hm, est);
       const preview = toRGBA(sim, hm.width * hm.height);
+      // Tag-und-Nacht-Bild: die Rückplatte als zweites Teil, gleicher Umriss und gleiche Lage wie das Tagbild
+      let nightOut: any = null;
+      const extra: Transferable[] = [];
+      if (night && ev.data.night) {
+        const nr = nightResult(hm, est, ev.data.settings, ev.data.night);
+        const nm = heightmapToMesh(nightPlate(hm, nr.t));
+        const nstl = writeStl(nm, `Chromalith Nachtbild ${ev.data.name}`);
+        nightOut = { stl: nstl.buffer, preview: nr.preview.buffer, info: nr.info, through: nr.through, volume_mm3: meshVolume(nm), triangles: nm.faces.length / 3 };
+        extra.push(nstl.buffer, nr.preview.buffer);
+      }
       write3mf(mesh, hm, est, ev.data.name, ev.data.slicer ?? {}).then(({ data: tmf, info }) => {
         const result = { stl: stl.buffer, threemf: tmf.buffer, threemfInfo: info, report: planReport(hm, est, ev.data.name),
-          json: JSON.stringify(planJson(hm, est), null, 2), preview: preview.buffer, width: hm.width, height: hm.height };
-        (self as any).postMessage({ id, ok: true, result }, [stl.buffer, tmf.buffer, preview.buffer]);
+          json: JSON.stringify(planJson(hm, est), null, 2), preview: preview.buffer, width: hm.width, height: hm.height, night: nightOut };
+        (self as any).postMessage({ id, ok: true, result }, [stl.buffer, tmf.buffer, preview.buffer, ...extra]);
       }, (e) => (self as any).postMessage({ id, ok: false, error: String(e?.message ?? e) }));
       return;
     }

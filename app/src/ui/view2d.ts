@@ -57,7 +57,13 @@ export class ImageView {
     }, { passive: false });
     let drag: { x: number; y: number } | null = null;
     let down = { x: 0, y: 0 };
-    this.el.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; drag = { x: e.clientX - this.x, y: e.clientY - this.y }; this.el.setPointerCapture(e.pointerId); this.el.style.cursor = "grabbing"; });
+    // Knöpfe über dem Bild (Vergleich, Tag/Nacht) bekommen ihren Klick selbst: Hielte die Ansicht den Zeiger fest,
+    // ginge der Klick an sie statt an den Knopf
+    const onTool = (e: Event) => e.target instanceof Element && !!e.target.closest(".view-tools");
+    this.el.addEventListener("pointerdown", (e) => {
+      if (onTool(e)) return;
+      down = { x: e.clientX, y: e.clientY }; drag = { x: e.clientX - this.x, y: e.clientY - this.y }; this.el.setPointerCapture(e.pointerId); this.el.style.cursor = "grabbing";
+    });
     this.el.addEventListener("pointermove", (e) => {
       if (drag) { this.x = e.clientX - drag.x; this.y = e.clientY - drag.y; this.apply(); }
       if (this.onHover && this.iw) {
@@ -75,7 +81,7 @@ export class ImageView {
       end();
     });
     this.el.addEventListener("pointercancel", end);
-    this.el.addEventListener("dblclick", () => this.fit());
+    this.el.addEventListener("dblclick", (e) => { if (!onTool(e)) this.fit(); });
     new ResizeObserver(() => { if (!this.fitted) this.fit(); }).observe(this.el);
   }
 
