@@ -1,5 +1,5 @@
 /** Schnittstelle zum Rechen-Worker (Promise-basiert). */
-import type { ColorStop, HeightSettings, LithoLight, NightInfo, NightLight, Raster, ThreeMfInfo, ThreeMfOptions } from "./core";
+import type { ColorStop, Filament, HeightSettings, LentiModel, LentiPrint, LithoLight, NightInfo, NightLight, Raster, ThreeMfInfo, ThreeMfOptions } from "./core";
 
 const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
 let nextId = 1;
@@ -61,3 +61,10 @@ export interface LithoResult {
 export const litho = (settings: HeightSettings, light: LithoLight) => call<LithoResult>({ type: "litho", settings, light });
 export const lithoExport = (settings: HeightSettings, light: LithoLight, name: string) =>
   call<{ stl: ArrayBuffer; triangles: number; size: [number, number, number]; volume_mm3: number; note: string }>({ type: "litho", settings, light, name, export: true });
+
+/** Lentikularbild: Modell (Farbe je Flanke), Druckaufwand und Netz für die 3D-Ansicht */
+export interface LentiResult { model: LentiModel; print: LentiPrint; mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer } }
+export const lenti = (settings: HeightSettings, palette: Filament[]) => call<LentiResult>({ type: "lenti", settings, palette });
+export const lentiExport = (settings: HeightSettings, palette: Filament[]) =>
+  call<{ base: ArrayBuffer; parts: (ArrayBuffer | null)[]; views: { rgba: ArrayBuffer; width: number; height: number }[]; model: LentiModel; print: LentiPrint; triangles: number }>(
+    { type: "lenti", settings, palette, export: true });

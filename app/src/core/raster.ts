@@ -73,6 +73,15 @@ export function resize(r: Raster, w: number, h: number): Raster {
   return { width: w, height: h, data: out };
 }
 
+/** Bild auf w × h bringen, ohne es zu verzerren: Es füllt die Fläche; was übersteht, wird mittig abgeschnitten.
+ *  `ar` ist das Seitenverhältnis der Fläche (Breite / Höhe), falls die Punkte des Ziels nicht quadratisch sind. */
+export function coverResize(r: Raster, w: number, h: number, ar = w / h): Raster {
+  let cw = r.width, ch = Math.round(cw / ar);
+  if (ch > r.height) { ch = r.height; cw = Math.min(r.width, Math.max(1, Math.round(ch * ar))); }
+  ch = Math.max(1, ch);
+  return resize(crop(r, Math.floor((r.width - cw) / 2), Math.floor((r.height - ch) / 2), cw, ch), w, h);
+}
+
 /** Separabler Gauß-Weichzeichner auf einem Kanal-Array (w*h). */
 export function gaussianBlur(a: Float32Array, w: number, h: number, sigma: number): Float32Array {
   if (sigma <= 0) return a;

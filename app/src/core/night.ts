@@ -11,7 +11,7 @@ import { hexToRgb, linearToSrgb, srgbToLinear } from "./color";
 import { layerCount, type HeightMap, type HeightSettings } from "./heightmap";
 import { acesTone, LITHO_SCATTER, LITHO_SPECTRUM } from "./litho";
 import { OPACITY_K, segments, type ColorStop } from "./plan";
-import { crop, gaussianBlur, resize, type Raster } from "./raster";
+import { coverResize, gaussianBlur, type Raster } from "./raster";
 
 const LUMA: [number, number, number] = [0.2126, 0.7152, 0.0722];
 /** Dieser Anteil des Dickenbereichs bleibt mindestens für das Nachtbild selbst */
@@ -60,11 +60,7 @@ export function stackTransmission(hm: HeightMap, stops: ColorStop[]): Float32Arr
 /** Helligkeit des Nachtbilds (0..1, wie am Bildschirm empfunden) auf dem Raster des Tagbilds. Das Nachtbild füllt
  *  die Fläche des Tagbilds; was übersteht, wird mittig abgeschnitten. */
 export function nightTarget(night: Raster, w: number, h: number): Float32Array {
-  const ar = w / h;
-  let cw = night.width, ch = Math.round(cw / ar);
-  if (ch > night.height) { ch = night.height; cw = Math.min(night.width, Math.max(1, Math.round(ch * ar))); }
-  ch = Math.max(1, ch);
-  const r = resize(crop(night, Math.floor((night.width - cw) / 2), Math.floor((night.height - ch) / 2), cw, ch), w, h);
+  const r = coverResize(night, w, h);
   const out = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) {
     const a = r.data[i * 4 + 3];

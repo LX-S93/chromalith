@@ -16,3 +16,4 @@ export * from "./spoolman";
 export * from "./litho";
 export * from "./tdcal";
 export * from "./night";
+export * from "./lenticular";

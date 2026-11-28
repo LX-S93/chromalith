@@ -165,6 +165,14 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 
 .view-tools .mode-pill { background: #15161cdd; }
 .view-tools .mode-pill button { padding: 5px 12px; font-size: 12px; }
 
+/* Lentikularbild: Stapel nur als Farbliste, eigener Regler über der Vorschau */
+#app.lenti [data-mode="relief"], #app.lenti [data-nolenti], #app.lenti .zbar, #app.lenti .view-tools:not(.lenti-only), #app.lenti .mode-pill.top { display: none; }
+#app:not(.lenti) [data-mode="lenti"], #app:not(.lenti) .lenti-only { display: none; }
+#app.lenti .stack-body { grid-template-columns: 1fr; }
+#app.lenti .stop .title small.range { display: none; }
+#app.lenti .stack-info, #app.lenti .stop .layer, #app.lenti .stop .z, #app.lenti .stack-body > :first-child, #app.lenti .stack-actions .primary, #app.lenti .stack-head .hint { display: none; }
+.view-tools.angle-bar { align-items: center; background: #15161cdd; border: 1px solid var(--line-2); border-radius: 999px; padding: 5px 14px; font-size: 12px; }
+
 /* Tag-und-Nacht-Bild */
 .night-pick { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
 .night-pick .night-buttons { display: grid; gap: 6px; flex: 1; min-width: 0; }

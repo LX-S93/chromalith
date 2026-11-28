@@ -60,6 +60,8 @@ by size and SHA-256 before it is started.
   first step that no light shines through
 - **Day-and-night image:** a second image that only appears when the print is lit from behind, built as a
   single-colour back plate behind the colour relief, with a preview of both views
+- **Lenticular image:** a ribbed surface that shows one image from the left and another from the right, printed
+  in several colours with a filament changer (AMS); preview with a viewing-angle slider, one STL per filament
 - **Lithophanes:** flat, curved, cylinder (lampshade) and sphere (ornament with hanging loop and optional
   screw cap for the light); place, scale and repeat the image on the body without distortion; light simulation
   with a visible lamp and different light sources; STL export
@@ -168,6 +170,38 @@ What to expect, honestly:
 - Little light arrives at the front (often around 1%), so the night image needs a strong, even light such as an
   LED panel and a dark room.
 - The preview is a simulation based on the TD values of your filaments. Measured TD values make it more reliable.
+
+## Lenticular image
+
+A flip image: a surface of small triangular ridges that shows **one image from the left and another from the
+right**; from the front you see both interleaved. Switch the kind at the top left to **Lenticular**.
+
+Unlike a colour relief, the colour here does not come from the height. Every spot of a flank is printed in
+exactly one filament, so each layer contains several colours side by side and the print needs a **filament
+changer (AMS)**. The colours come from the filament stack: every spot gets the most similar filament, the layers
+of the stack play no role.
+
+1. Open the first image (seen from the left), then choose the second one under **Lenticular image**. It fills
+   the area of the first; whatever sticks out is cropped around the centre.
+2. Set width, ridge width, ridge height, colour layer and base plate. High ridges separate the two images at a
+   smaller viewing angle; Chromalith shows the angle from which only one image is visible.
+3. Move the **viewing angle** slider above the preview, or rotate the model in the 3D view.
+4. **Export** writes one STL per filament plus the base plate and two view images. Load all STL files together
+   in the slicer and answer Yes when it asks whether to load them as one object with multiple parts, then assign
+   each part its filament. The number in the file name is the position in the stack.
+
+What to expect, honestly:
+
+- Clear motifs with few, strong colours work best. Each image has about one pixel per millimetre of width
+  (wide flanks carry several image columns) and one per 0.4 mm along the ridges.
+- Filament changes add up: every layer above the base plate needs each colour once, for example 7 layers × 4
+  colours = 28 changes at 0.2 mm layer height. Chromalith shows the number and points out colours that hardly
+  occur but still cost a change per layer.
+- The colour layer is thin, so translucent filaments let the base plate show through and look lighter. The
+  preview takes this into account with a base plate in the lightest filament; a thicker colour layer or
+  filaments with a small TD give stronger colours.
+- The second image is shared with the day-and-night image of the colour relief.
+- This is a simulation; ridges only run top to bottom so far.
 
 ## Support
 

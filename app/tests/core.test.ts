@@ -992,3 +992,160 @@ describe("Tag-und-Nacht-Bild", () => {
     expect(serializeProject({ ...p, nightPng: null })).not.toContain("night_png");
   });
 });
+
+import { LENTI_COL_MM, LENTI_ROW_MM, LENTI_SKIN_MM, columnMesh, coverResize, lentiLightest, lentiModel, lentiShades, lentiThrough, lentiParts, lentiPreviewMesh, lentiPrint, lentiPureAngle, lentiView, lentiVisible } from "../src/core";
+
+describe("Lentikularbild", () => {
+  /** links schwarz, rechts weiß */
+  const halves = (w = 80, h = 40): Raster => {
+    const data = new Float32Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) { data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = i % w < w / 2 ? 0 : 1; data[i * 4 + 3] = 1; }
+    return { width: w, height: h, data };
+  };
+  /** oben rot, unten weiß */
+  const bands = (w = 60, h = 60): Raster => {
+    const data = new Float32Array(w * h * 4).fill(1);
+    for (let i = 0; i < w * (h / 2); i++) { data[i * 4 + 1] = 0; data[i * 4 + 2] = 0; }
+    return { width: w, height: h, data };
+  };
+  const COLORS = ["#000000", "#ffffff", "#ff0000"];
+  const L = (o: Partial<HeightSettings> = {}) => S({ width_mm: 40, lenti: true, lenti_pitch_mm: 2, lenti_height_mm: 1, lenti_base_mm: 0.6, lenti_skin_mm: 0.2, ...o });
+  const zMaxOf = (m: { vertices: Float32Array }) => { let z = 0; for (let i = 2; i < m.vertices.length; i += 3) z = Math.max(z, m.vertices[i]); return z; };
+
+  it("Bilder: Rippen und Zeilen, ähnlichste Farbe, zweites Bild mittig eingepasst", () => {
+    const m = lentiModel(halves(), bands(), COLORS, L());
+    // 2 mm breite Rippen: jede Flanke (1 mm) trägt zwei Bildspalten
+    expect([m.cols, m.sub, m.icols, m.rows, m.width, m.depth]).toEqual([20, 2, 40, 50, 40, 20]);
+    expect(m.dy).toBeCloseTo(LENTI_ROW_MM, 6);
+    expect([1, 1.8, 2.8, 3, 6].map((p) => lentiModel(halves(), null, COLORS, L({ lenti_pitch_mm: p })).sub)).toEqual([1, 1, 2, 3, 6]);
+    expect(LENTI_COL_MM).toBe(0.5);
+    // Bild 1 auf den linken Flanken: links schwarz, rechts weiß
+    expect([m.a[0], m.a[m.icols - 1], m.a[(m.rows - 1) * m.icols]]).toEqual([0, 1, 0]);
+    // Bild 2 (quadratisch) füllt die breite Fläche: oben rot, unten weiß, links wie rechts
+    expect([m.b[0], m.b[m.icols - 1], m.b[(m.rows - 1) * m.icols], m.b[m.rows * m.icols - 1]]).toEqual([2, 2, 1, 1]);
+    expect(m.share.reduce((p, q) => p + q, 0)).toBeCloseTo(1, 6);
+    expect(m.share[0]).toBeCloseTo(0.25, 6); expect(m.share[2]).toBeCloseTo(0.25, 6);
+    // ohne zweites Bild tragen beide Flanken das erste; durchsichtige Stellen bekommen die hellste Farbe
+    const one = lentiModel(halves(), null, COLORS, L());
+    expect(Array.from(one.b)).toEqual(Array.from(one.a));
+    const clear = lentiModel({ width: 4, height: 4, data: new Float32Array(64) }, null, COLORS, L());
+    expect(new Set(clear.a)).toEqual(new Set([1]));
+    expect(() => lentiModel(halves(), null, [], L())).toThrow(/Filament/);
+    // die Bildpunkte sind nicht quadratisch (1 mm breit, 0,4 mm hoch): Das Bild wird trotzdem ganz gezeigt
+    const quarter = halves(); for (let i = 0; i < 80 * 40; i++) if (i % 80 >= 20) quarter.data[i * 4] = quarter.data[i * 4 + 1] = quarter.data[i * 4 + 2] = 1;
+    const q = lentiModel(quarter, bands(60, 60), COLORS, L());
+    expect(Array.from(q.a.slice(0, 12))).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]);
+    // das quadratische zweite Bild verliert oben und unten je ein Viertel: die Grenze zwischen Rot und Weiß bleibt in der Mitte
+    expect([q.b[24 * q.icols], q.b[25 * q.icols]]).toEqual([2, 1]);
+    const tall = lentiModel(bands(40, 80), null, COLORS, L());
+    expect([tall.rows, tall.depth, tall.a[99 * tall.icols], tall.a[100 * tall.icols]]).toEqual([200, 80, 2, 1]);
+    const fit = coverResize(halves(200, 50), 10, 10);
+    expect(fit.data[0]).toBeLessThan(0.02); expect(fit.data[9 * 4]).toBeGreaterThan(0.98);
+  });
+
+  it("Druckteile: je Farbe ein geschlossenes Teil, lückenlos und ohne Überlappung", () => {
+    const m = lentiModel(halves(), bands(), COLORS, L());
+    const { base, parts } = lentiParts(m, COLORS.length);
+    expect(watertight(base.faces)).toBe(true);
+    expect(meshVolume(base)).toBeCloseTo(40 * 20 * 0.6, 3);
+    expect(zMaxOf(base)).toBeCloseTo(0.6, 6);
+    const print = lentiPrint(m, 0.2);
+    let sum = 0;
+    parts.forEach((p, k) => {
+      expect(p).not.toBeNull();
+      expect(watertight(p!.faces)).toBe(true);
+      expect(meshVolume(p!)).toBeCloseTo(print.volumes[k], 2);
+      expect(zMaxOf(p!)).toBeCloseTo(0.6 + LENTI_SKIN_MM + 1, 5);
+      let zMin = Infinity;
+      for (let i = 2; i < p!.vertices.length; i += 3) zMin = Math.min(zMin, p!.vertices[i]);
+      expect(zMin).toBeCloseTo(0.6, 6);
+      sum += meshVolume(p!);
+    });
+    // alle Farben zusammen füllen die gerippte Lage genau einmal
+    expect(sum).toBeCloseTo(40 * 20 * (LENTI_SKIN_MM + 0.5), 2);
+    expect(print.baseVolume).toBeCloseTo(480, 6);
+    // eine Farbe, die nicht vorkommt, ergibt kein Teil
+    const two = lentiModel(halves(), null, COLORS, L());
+    expect(lentiParts(two, 3).parts[2]).toBeNull();
+    expect(columnMesh(2, 2, 1, 1, () => 1, 0, () => false)).toBeNull();
+    // linke Flanke = Bild 1: die Zelle ganz links oben ist schwarz und steigt nach rechts an
+    const black = lentiParts(two, 3).parts[0]!;
+    let hasValley = false, hasRidge = false;
+    for (let i = 0; i < black.vertices.length; i += 3) {
+      if (black.vertices[i] === 0 && Math.abs(black.vertices[i + 2] - 0.8) < 1e-6) hasValley = true;
+      if (Math.abs(black.vertices[i] - 1) < 1e-6 && Math.abs(black.vertices[i + 2] - 1.8) < 1e-6) hasRidge = true;
+    }
+    expect(hasValley && hasRidge).toBe(true);
+  });
+
+  it("Blickwinkel: von links Bild 1, von rechts Bild 2, von vorn beide", () => {
+    const m = lentiModel(halves(), bands(), COLORS, L());
+    expect(lentiPureAngle(m)).toBeCloseTo(45, 6);
+    expect(lentiPureAngle(lentiModel(halves(), null, COLORS, L({ lenti_height_mm: 2 })))).toBeCloseTo(26.565, 2);
+    const front = lentiVisible(m, 0), left = lentiVisible(m, 45), right = lentiVisible(m, -60), part = lentiVisible(m, 20);
+    expect([front.left, front.right]).toEqual([0.5, 0.5]);
+    expect(left.right).toBeCloseTo(0, 6); expect(left.left).toBeCloseTo(1, 6);
+    expect(right.left).toBe(0); expect(right.right).toBe(1);
+    expect(part.left).toBeGreaterThan(0.5); expect(part.left).toBeLessThan(1);
+    expect(left.shadeL).toBeGreaterThan(left.shadeR);
+    const hexAt = (v: { rgb: Float32Array; width: number }, x: number, y: number, sh: number) => [0, 1, 2].map((c) => Math.round(v.rgb[(y * v.width + x) * 3 + c] / sh * 255));
+    const vl = lentiView(m, COLORS, 50), vr = lentiView(m, COLORS, -50), vf = lentiView(m, COLORS, 0);
+    expect([vl.width, vl.height]).toEqual([160, 80]);
+    const sl = lentiVisible(m, 50), sr = lentiVisible(m, -50);
+    // von links: überall Bild 1 (links schwarz, rechts weiß)
+    expect(hexAt(vl, 3, 2, sl.shadeL)).toEqual([0, 0, 0]); expect(hexAt(vl, 157, 2, sl.shadeL)).toEqual([255, 255, 255]); expect(hexAt(vl, 6, 2, sl.shadeL)).toEqual([0, 0, 0]);
+    // von rechts: überall Bild 2 (oben rot, unten weiß)
+    expect(hexAt(vr, 3, 2, sr.shadeR)).toEqual([255, 0, 0]); expect(hexAt(vr, 157, 78, sr.shadeR)).toEqual([255, 255, 255]);
+    // von vorn: in jeder Rippe links Bild 1, rechts Bild 2
+    expect(hexAt(vf, 1, 2, front.shadeL)).toEqual([0, 0, 0]); expect(hexAt(vf, 6, 2, front.shadeR)).toEqual([255, 0, 0]);
+  });
+
+  it("3D-Vorschau und Druckaufwand", () => {
+    const m = lentiModel(halves(), bands(), COLORS, L());
+    const pm = lentiPreviewMesh(m, COLORS);
+    expect(pm.vertices.length).toBe(pm.colors.length);
+    expect(pm.faces.length % 3).toBe(0);
+    expect(Math.max(...pm.faces)).toBeLessThan(pm.vertices.length / 3);
+    // erste Zelle oben links: schwarz, steigt vom Tal zum Grat
+    expect(Array.from(pm.colors.slice(0, 3))).toEqual([0, 0, 0]);
+    expect(pm.vertices[2]).toBeCloseTo(0.8, 6); expect(pm.vertices[5]).toBeCloseTo(1.3, 6);
+    const small = lentiPreviewMesh(m, COLORS, 500);
+    expect(small.vertices.length).toBeLessThan(pm.vertices.length / 2);
+    // 1,2 mm farbige Lage bei 0,2 mm Schichten: 6 Schichten mit je 3 Farben
+    expect(lentiPrint(m, 0.2)).toMatchObject({ layers: 6, colors: 3, changes: 18 });
+    expect(lentiPrint(m, 0.08).layers).toBe(15);
+    expect(lentiPrint(lentiModel(halves(), null, ["#ffffff"], L()), 0.2).changes).toBe(0);
+    // breite Rippen: jede Flanke zeigt ihre Bildspalten in der Reihenfolge des Bildes
+    const stripes: Raster = { width: 6, height: 2, data: Float32Array.from({ length: 48 }, (_, i) => (i % 4 === 3 ? 1 : Math.floor(i / 4) % 2)) };
+    const wide = lentiModel(stripes, null, COLORS, L({ width_mm: 6, lenti_pitch_mm: 3 }));
+    expect([wide.cols, wide.sub, wide.icols]).toEqual([2, 3, 6]);
+    expect(Array.from(wide.a.slice(0, 6))).toEqual([0, 1, 0, 1, 0, 1]);
+    const vw = lentiView(wide, COLORS, 80), bright = (x: number) => vw.rgb[x * 3] > 0.3;
+    expect(vw.width).toBe(24);
+    expect([1, 5, 9, 13, 17, 21].map(bright)).toEqual([false, true, false, true, false, true]);
+    // Grat in der Mitte der Rippe, dazwischen gleichmäßig ansteigend
+    const tops = lentiParts(wide, 3).parts.filter((p) => !!p).map((p) => p!.vertices);
+    const zAt = (x: number) => { let z = -1; for (const v of tops) for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) < 1e-6) z = Math.max(z, v[i + 2]); return z; };
+    expect([zAt(0.5), zAt(1), zAt(1.5), zAt(2), zAt(2.5)].map((v) => +v.toFixed(3))).toEqual([1.133, 1.467, 1.8, 1.467, 1.133]);
+    // durchscheinende Filamente: am Tal scheint die helle Grundplatte durch, am Grat kaum; deckende Farben bleiben
+    const pal = [{ color: "#000000", td: 0.6 }, { color: "#ffffff", td: 5 }, { color: "#ff0000", td: 3 }];
+    expect(lentiLightest(pal)).toBe(1); expect(lentiLightest(COLORS)).toBe(1);
+    const sh = lentiShades(wide, pal), opaque = lentiShades(wide, COLORS);
+    expect(sh[0][0]).toBeGreaterThan(sh[0][3]); expect(sh[0][3]).toBeGreaterThan(sh[0][6]);
+    expect(sh[0][0]).toBeGreaterThan(0.2); expect(sh[0][6]).toBeLessThan(0.1);
+    expect(sh[2][1]).toBeGreaterThan(sh[2][7]);
+    expect(Array.from(sh[1])).toEqual(Array.from(opaque[1]));
+    expect(Array.from(opaque[0])).toEqual(new Array(9).fill(0));
+    // dunkle Grundplatte: helle Filamente werden am Tal dunkler
+    expect(lentiShades(wide, pal, "#000000")[1][0]).toBeLessThan(0.8);
+    // eine dickere Farbschicht lässt weniger von der Grundplatte durch; deckende Farben gar nichts
+    const thick = lentiModel(stripes, null, COLORS, L({ width_mm: 6, lenti_pitch_mm: 3, lenti_skin_mm: 1 }));
+    expect(thick.skin).toBe(1); expect(lentiModel(stripes, null, COLORS, L({ lenti_skin_mm: 0.05 })).skin).toBe(LENTI_SKIN_MM);
+    expect(lentiThrough(wide, pal)).toBeGreaterThan(lentiThrough(thick, pal));
+    expect(lentiThrough(thick, pal)).toBeGreaterThan(0); expect(lentiThrough(wide, pal)).toBeLessThan(0.5);
+    expect(lentiThrough(wide, COLORS)).toBe(0);
+    expect(lentiPrint(thick, 0.2).layers).toBe(10);
+    const old = parseProject(JSON.stringify({ format: "chromalith-project", version: 1, name: "alt", settings: { width_mm: 120 }, plan: [], image_png: null }));
+    expect([old.settings.lenti, old.settings.lenti_pitch_mm, old.settings.lenti_height_mm, old.settings.lenti_base_mm, old.settings.lenti_skin_mm]).toEqual([false, 2, 1, 0.6, 0.4]);
+  });
+});

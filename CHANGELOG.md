@@ -2,6 +2,28 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.30.0 – 2026-11-28
+
+- New: lenticular image. A third kind next to colour relief and lithophane: a surface of small triangular ridges that shows the opened image from the left and a second image from the right; from the front both are interleaved.
+- It is a real multi-colour print for a filament changer (AMS): every spot of a flank gets the most similar filament of the stack, the layers of the stack play no role. The reason: with colour by height a flank could not show a different colour at every height.
+- Settings: second image, ridge width, ridge height, colour layer and base plate. Wide flanks carry several image columns side by side, so the sharpness of the images hardly depends on the ridge width.
+- Preview with a viewing-angle slider (from the left, from the front, from the right); the 3D view shows the ridges true to scale. Translucent filaments let the base plate show through where the colour layer is thin; the preview takes this into account and says how strong the effect is.
+- Key figures: size, number of ridges, pixels per image, the angle from which only one image is visible, layers and filament changes. Hints when the images need more filaments than the filament changer has slots, and for colours that hardly occur but still cost a change in every layer.
+- Export writes one STL per filament plus the base plate and two view images (from the left and from the right). In the slicer, load all STL files together as one object with multiple parts and assign each part its filament.
+- "Export preview image" saves the lenticular image from the chosen viewing angle.
+- Honest limits: simulated, not yet test-printed. Clear motifs with few, strong colours work best; ridges only run top to bottom so far.
+
+<!-- de
+- Neu: Lentikularbild. Eine dritte Art neben Farbrelief und Lithophanie: eine Oberfläche aus kleinen dreieckigen Rippen, die von links das geöffnete Bild und von rechts ein zweites Bild zeigt; von vorn liegen beide ineinander.
+- Es ist ein echter Mehrfarbdruck für einen Filamentwechsler (AMS): Jede Stelle einer Flanke bekommt das ähnlichste Filament des Stapels, die Schichten des Stapels spielen keine Rolle. Der Grund: Mit Farbe aus der Höhe könnte eine Flanke nicht in jeder Höhe eine andere Farbe zeigen.
+- Einstellungen: zweites Bild, Rippenbreite, Rippenhöhe, Farbschicht und Grundplatte. Breite Flanken tragen mehrere Bildspalten nebeneinander, die Schärfe der Bilder hängt deshalb kaum von der Rippenbreite ab.
+- Vorschau mit Regler für den Blickwinkel (von links, von vorn, von rechts); die 3D-Ansicht zeigt die Rippen maßstäblich. Durchscheinende Filamente lassen die Grundplatte durch, wo die Farbschicht dünn ist; die Vorschau rechnet damit und sagt, wie stark das wirkt.
+- Kennzahlen: Größe, Zahl der Rippen, Bildpunkte je Bild, der Winkel, ab dem nur noch ein Bild zu sehen ist, Schichten und Filamentwechsel. Hinweise, wenn die Bilder mehr Filamente brauchen, als der Filamentwechsler Plätze hat, und für Farben, die kaum vorkommen, aber trotzdem in jeder Schicht einen Wechsel kosten.
+- Der Export schreibt je Filament eine STL, dazu die Grundplatte und zwei Ansichten (von links und von rechts). Im Slicer alle STL-Dateien zusammen als ein Objekt aus mehreren Teilen laden und jedem Teil sein Filament zuweisen.
+- „Vorschaubild exportieren“ sichert das Lentikularbild aus dem gewählten Blickwinkel.
+- Ehrliche Grenzen: simuliert, noch nicht probegedruckt. Am besten wirken klare Motive mit wenigen, kräftigen Farben; die Rippen laufen bisher nur von oben nach unten.
+-->
+
 ## 0.29.0 – 2026-11-28
 
 - New: day-and-night image. In daylight you see the colour relief, with light from behind a second, hidden image appears. Section "Day-and-night image" on the left: choose the night image, and Chromalith creates a single-colour back plate whose thickness carries it (thin = bright).

@@ -95,6 +95,14 @@ export interface HeightSettings {
   night_auto: boolean;
   /** wie weit die Rückplatte die Helligkeitsunterschiede des Tagbilds ausgleicht, 0 bis 1 */
   night_comp: number;
+  /** Lentikularbild statt Farbrelief: gerippte Oberfläche, von links und rechts zwei Motive (siehe lenticular.ts) */
+  lenti: boolean;
+  /** Breite und Höhe einer Rippe, Dicke der Grundplatte darunter */
+  lenti_pitch_mm: number;
+  lenti_height_mm: number;
+  lenti_base_mm: number;
+  /** Farbige Lage zwischen Grundplatte und Rippen (mm): Je dicker, desto weniger scheint die Grundplatte durch */
+  lenti_skin_mm: number;
 }
 
 export const DEFAULT_SETTINGS: HeightSettings = {
@@ -108,6 +116,7 @@ export const DEFAULT_SETTINGS: HeightSettings = {
   litho_hole_mm: 30, litho_loop: true, litho_invert: false,
   litho_img_deg: 150, litho_img_x: 0, litho_img_y: 0, litho_repeat: false, litho_height_mm: 0, litho_cap: false, litho_cap_mm: 26, litho_rest_mm: 2.2,
   night_min_mm: 0.6, night_max_mm: 3, night_auto: true, night_comp: 1,
+  lenti: false, lenti_pitch_mm: 2, lenti_height_mm: 1, lenti_base_mm: 0.6, lenti_skin_mm: 0.4,
 };
 
 export function normalizeSettings(d: Partial<HeightSettings> | undefined): HeightSettings {

@@ -6,6 +6,7 @@ import {
   lithoMesh, lithoThickness, lithoSimulate, meshVolume, type LithoLight,
   maxZ, minLayer, planJson, planReport, simulate, sizeMm, writeStl, type ColorStop, type DigitRenderer,
   nightPlate, nightSimulate, nightTarget, nightThickness, type HeightMap, type NightLight,
+  lentiModel, lentiParts, lentiPreviewMesh, lentiPrint, lentiPureAngle, lentiView,
   type HeightSettings, type Project, type Raster,
 } from "./core";
 
@@ -134,6 +135,25 @@ self.onmessage = (ev: MessageEvent) => {
           triangles: Math.round((m.faces.length / 3) * Math.max(1, (fullW / th.w)) ** 2),
           mesh: { vertices: m.vertices.buffer, faces: m.faces.buffer, thick: m.thick.buffer, thickS: m.thickS.buffer, baseN: m.baseN.buffer } };
         transfer = [preview.buffer, m.vertices.buffer, m.faces.buffer, m.thick.buffer, m.thickS.buffer, m.baseN.buffer];
+      }
+    } else if (type === "lenti") {
+      if (!image) throw new Error("Kein Bild geladen.");
+      const s = ev.data.settings as HeightSettings, pal = ev.data.palette as Filament[], colors = pal.map((f) => f.color);
+      const model = lentiModel(image, night, colors, s), print = lentiPrint(model);
+      if (ev.data.export) {
+        const { base, parts } = lentiParts(model, colors.length);
+        const baseStl = writeStl(base, "Chromalith Lentikular Grundplatte");
+        const stls = parts.map((m, k) => (m ? writeStl(m, `Chromalith Lentikular Teil ${k + 1}`) : null));
+        // Ansichten von links und rechts, etwas jenseits des Winkels, ab dem nur noch ein Bild zu sehen ist
+        const angle = Math.min(80, lentiPureAngle(model) + 5);
+        const views = [angle, -angle].map((a) => { const v = lentiView(model, pal, a); return { rgba: toRGBA(v.rgb, v.width * v.height).buffer, width: v.width, height: v.height }; });
+        result = { base: baseStl.buffer, parts: stls.map((u) => (u ? u.buffer : null)), views, model, print,
+          triangles: base.faces.length / 3 + parts.reduce((n, m) => n + (m ? m.faces.length / 3 : 0), 0) };
+        transfer = [baseStl.buffer, ...stls.filter((u): u is Uint8Array => !!u).map((u) => u.buffer), ...views.map((v) => v.rgba)];
+      } else {
+        const pm = lentiPreviewMesh(model, pal);
+        result = { model, print, mesh: { vertices: pm.vertices.buffer, faces: pm.faces.buffer, colors: pm.colors.buffer } };
+        transfer = [pm.vertices.buffer, pm.faces.buffer, pm.colors.buffer];
       }
     } else if (type === "suggest") {
       if (!image) throw new Error("Kein Bild geladen.");

@@ -7,6 +7,7 @@ import {
   LITHO_FORMS, materialDensity, filamentAtLayer, layerTopZ, simulate, effectiveMode, type HeightSettings, type Island, type Project, type Raster,
   SLICER_TARGETS, filamentKey, planSlots, type ThreeMfInfo,
   NIGHT_AUTO_MAX, pickNightFilament, resize, type NightFilament, type NightLight,
+  LENTI_LAYER_MM, lentiLightest, lentiPureAngle, lentiThrough, lentiView, ordered, type LentiModel, type LentiPrint,
 } from "./core";
 import * as compute from "./compute";
 import type { NightResult, PreviewResult } from "./compute";
@@ -122,6 +123,8 @@ for (const [k, label] of [["auto", "Auto"], ["bright_high", "Hell hoch"], ["dark
   const b = h("button", { onclick: () => { fields.height_mode!.set(k); setSetting("height_mode", k); } }, label);
   modeButtons.set(k, b); modePill.append(b);
 }
+const invertBtn = button("Umkehren", invertHeight, { icon: "swap", cls: "ghost collapsible", title: "Höhe umkehren: helle oder dunkle Bildstellen hoch" });
+invertBtn.dataset.mode = "relief";
 const menu = h("div", { class: "menu" });
 const menuItem = (label: string, fn: () => void, kbd = "", ic = "") =>
   h("button", { onclick: () => { menu.classList.remove("open"); fn(); } }, ic ? icon(ic) : "", label, kbd ? h("kbd", null, kbd) : "");
@@ -151,7 +154,7 @@ const topbar = h("header", { class: "topbar" },
   button("Filamente", () => openLibrary(libHost).then(() => refreshAnalysis()), { icon: "library", cls: "collapsible", title: "Filament-Bibliothek: suchen, bearbeiten, importieren (Strg+L)" }),
   h("div", { class: "spacer" }),
   modePill,
-  button("Umkehren", invertHeight, { icon: "swap", cls: "ghost collapsible", title: "Höhe umkehren: helle oder dunkle Bildstellen hoch" }),
+  invertBtn,
   menu,
   button("Exportieren", exportAll, { icon: "download", cls: "primary", title: "STL + Farbwechsel-Liste exportieren (Strg+E)" }));
 
@@ -217,7 +220,7 @@ const storedNightFilament = () => store.get<NightFilament>("nightFilament", { na
 const nightView = { filament: storedNightFilament(), show: false };
 /** Licht hinter dem Bild: gleichmäßig und neutral, wie ein Leuchtrahmen */
 const NIGHT_LAMP = "#fff3e4";
-const nightLight = (): NightLight | null => state.night && !state.settings.litho
+const nightLight = (): NightLight | null => state.night && !state.settings.litho && !state.settings.lenti
   ? { filamentColor: nightView.filament.color, td: nightView.filament.td, light: NIGHT_LAMP, intensity: 1 } : null;
 const nightPickBtn = button("", chooseNight, { cls: "wide", title: "Zweites Bild wählen, das erst mit Licht von hinten erscheint. Es füllt die Fläche des Tagbilds; was übersteht, wird mittig abgeschnitten." });
 const nightRemoveBtn = button("Entfernen", removeNight, { icon: "trash", cls: "ghost", title: "Nachtbild entfernen: Es bleibt das normale Farbrelief." });
@@ -251,6 +254,9 @@ left.append(nightSection);
 // Die Lithophanie nutzt davon nichts, deshalb sind sie dort ausgeblendet (style.css: #app.litho [data-mode="relief"]).
 for (const d of left.querySelectorAll<HTMLElement>("details.section")) if (["Form", "Schichten", "Farbinseln"].includes(d.querySelector("summary > span")!.textContent!)) d.dataset.mode = "relief";
 for (const k of ["border_mm", "border_height_mm", "height_mode", "color_detail"] as const) fields[k]!.el.dataset.mode = "relief";
+// Das Lentikularbild hat ein eigenes Raster und ordnet Farben direkt zu: Rasterweite und Bildkorrektur gelten dort nicht
+fields.pixel_size_mm!.el.dataset.nolenti = "1";
+for (const d of left.querySelectorAll<HTMLElement>("details.section")) if (d.querySelector("summary > span")!.textContent === "Bild") d.dataset.nolenti = "1";
 
 // ------------------------------------------------------------------ Lithophanie
 /** Lichtquellen: Farbe (aus der Farbtemperatur), Punktlicht oder gleichmäßig, Höhe im Körper, Grundhelligkeit */
@@ -269,10 +275,12 @@ const lithoView = {
 };
 const lamp = () => LAMPS[lithoView.lamp] ?? LAMPS.warm;
 const lithoLight = () => ({ filamentColor: lithoView.filament.color, td: lithoView.filament.td, light: lamp().color, intensity: lithoView.intensity * lamp().power });
-const kindPill = h("div", { class: "mode-pill", style: { display: "flex", marginBottom: "10px" }, title: "Farbrelief: farbiges Bild aus Filament-Schichten. Lithophanie: einfarbiges Bild, das im Gegenlicht erscheint." });
-const kindBtns = ([[false, "Farbrelief"], [true, "Lithophanie"]] as const).map(([v, label]) => {
-  const b = h("button", { style: { flex: "1" }, onclick: () => { setSetting("litho", v); syncLitho(); syncMode(); renderSteps(); } }, label);
-  kindPill.append(b); return [v, b] as const;
+type Kind = "relief" | "litho" | "lenti";
+const kindOf = (): Kind => (state.settings.lenti ? "lenti" : state.settings.litho ? "litho" : "relief");
+const kindPill = h("div", { class: "mode-pill", style: { display: "flex", marginBottom: "10px" }, title: "Farbrelief: farbiges Bild aus Filament-Schichten. Lithophanie: einfarbiges Bild, das im Gegenlicht erscheint. Lentikular: gerippte Oberfläche, die von links und rechts zwei verschiedene Bilder zeigt." });
+const kindBtns = ([["relief", "Farbrelief"], ["litho", "Lithophanie"], ["lenti", "Lentikular"]] as const).map(([k, label]) => {
+  const b = h("button", { style: { flex: "1", padding: "6px 4px" }, onclick: () => { state.settings.lenti = k === "lenti"; setSetting("litho", k === "litho"); syncLitho(); syncMode(); renderSteps(); } }, label);
+  kindPill.append(b); return [k, b] as const;
 });
 const lithoFilBtn = button("", async () => {
   const f = (await openLibrary(libHost, true))[0];
@@ -330,11 +338,28 @@ const lithoSection = section("Lithophanie", true,
   lithoLightSel.el, lithoIntensity.el,
   h("p", { class: "hint", style: { margin: "4px 0 0" } }, "Die Simulation zeigt, wie das Bild mit Licht von hinten bzw. innen aussieht. Drucktipp: 100 % Füllung, 0,12 mm Schichthöhe, langsam."));
 lithoSection.dataset.mode = "litho";
-left.prepend(kindPill, lithoSection);
+
+// ------------------------------------------------------------------ Lentikularbild
+const lentiPickBtn = button("", chooseNight, { cls: "wide", title: "Das zweite Bild wählen: Es erscheint beim Blick von rechts. Es füllt die Fläche des ersten Bildes; was übersteht, wird mittig abgeschnitten. Beim Farbrelief dient dasselbe Bild als Nachtbild." });
+const lentiRemoveBtn = button("Entfernen", removeNight, { icon: "trash", cls: "ghost", title: "Zweites Bild entfernen: Beide Seiten zeigen dann das erste Bild." });
+const lentiThumb = h("canvas", { class: "night-thumb" });
+const lentiInfo = h("div", { class: "night-info" });
+const lentiSection = section("Lentikularbild", true,
+  h("p", { class: "hint", style: { margin: "0 0 8px" } }, "Eine gerippte Oberfläche zeigt zwei Bilder: von links das geöffnete Bild, von rechts ein zweites. Gedruckt wird mit einem Filamentwechsler (AMS), denn in jeder Schicht liegen mehrere Farben nebeneinander."),
+  h("div", { class: "field" }, h("label", null, "Zweites Bild (von rechts zu sehen)")),
+  h("div", { class: "night-pick" }, lentiThumb, h("div", { class: "night-buttons" }, lentiPickBtn, lentiRemoveBtn)),
+  sl("lenti_pitch_mm", "Rippenbreite", 1, 6, 0.2, "mm", "Breite einer Rippe von Tal zu Tal. Schmale Rippen fallen weniger auf, breite sind leichter zu drucken. Die Schärfe der Bilder hängt kaum davon ab: Breite Flanken tragen mehrere Bildspalten nebeneinander.", 1),
+  sl("lenti_height_mm", "Rippenhöhe", 0.4, 4, 0.1, "mm", "Höhe der Rippen. Hohe Rippen trennen die beiden Bilder schon bei kleinem Blickwinkel, brauchen aber mehr Schichten und damit mehr Filamentwechsel.", 1),
+  sl("lenti_skin_mm", "Farbschicht", 0.2, 2, 0.1, "mm", "Dicke der farbigen Lage zwischen Grundplatte und Rippen. Mit einer dickeren Farbschicht scheint weniger von der Grundplatte durch und die Farben werden kräftiger. Dafür kommen Schichten mit Filamentwechseln dazu.", 1),
+  sl("lenti_base_mm", "Grundplatte", 0.4, 3, 0.1, "mm", "Dicke der einfarbigen Platte unter den Rippen. Am besten im hellsten Filament drucken: In den Tälern ist die Farbschicht dünn, dort scheint die Platte durch.", 1),
+  lentiInfo,
+  h("p", { class: "hint", style: { margin: "8px 0 0" } }, "Die Farben kommen aus dem Filament-Stapel rechts: Jede Stelle bekommt das ähnlichste Filament. Die Schichten des Stapels spielen hier keine Rolle. Am besten wirken klare Motive mit wenigen, kräftigen Farben."));
+lentiSection.dataset.mode = "lenti";
+left.prepend(kindPill, lithoSection, lentiSection);
 function syncLitho() {
-  const on = !!state.settings.litho, form = state.settings.litho_form;
-  app.classList.toggle("litho", on);
-  for (const [v, b] of kindBtns) b.classList.toggle("active", v === on);
+  const kind = kindOf(), on = kind === "litho", form = state.settings.litho_form;
+  app.classList.toggle("litho", on); app.classList.toggle("lenti", kind === "lenti");
+  for (const [k, b] of kindBtns) b.classList.toggle("active", k === kind);
   lithoFilBtn.replaceChildren(h("div", { class: "swatch", style: { background: lithoView.filament.color } }), `${lithoView.filament.name} · TD ${lithoView.filament.td.toFixed(1)}`);
   const show = (k: keyof HeightSettings, vis: boolean) => { const el = fields[k]?.el; if (el) el.style.display = vis ? "" : "none"; };
   show("litho_angle_deg", form === "curved"); const round = form === "sphere" || form === "cylinder"; for (const k of ["litho_img_deg", "litho_img_x", "litho_img_y", "litho_repeat", "litho_rest_mm"] as const) show(k, round); show("litho_height_mm", form === "cylinder"); show("litho_cap", form === "sphere"); lightSizeSel.el.style.display = lightSize.el.style.display = form === "sphere" ? "" : "none"; show("litho_cap_mm", form === "sphere" && !!state.settings.litho_cap); show("litho_hole_mm", form === "sphere" && !state.settings.litho_cap); show("litho_loop", form === "sphere");
@@ -408,6 +433,16 @@ const dayNightBtns = ([[false, "Tag"], [true, "Nacht"]] as const).map(([v, label
 const dayNightPill = h("div", { class: "mode-pill day-night", title: "Tag: das Farbrelief bei Licht von vorn. Nacht: Farbrelief und Rückplatte mit Licht von hinten. Die Helligkeit ist dabei wie von einer Kamera an die hellste Stelle angepasst." },
   ...dayNightBtns.map(([, b]) => b));
 viewPreview.el.append(h("div", { class: "view-tools" }, compareBtn, dayNightPill));
+// Lentikularbild: Blickwinkel der Vorschau (Regler links = Betrachter steht links)
+let lentiSide = Math.max(-70, Math.min(70, Number(store.get("lentiSide", -50)) || 0));
+const sideLabel = h("span", { style: { minWidth: "120px" } });
+const sideRange = h("input", { type: "range", min: -70, max: 70, step: 1, value: lentiSide, style: { width: "220px" },
+  title: "Von welcher Seite du auf das Bild schaust. Ganz links und ganz rechts ist je eines der beiden Bilder zu sehen, in der Mitte beide ineinander. Doppelklick: von vorn." });
+const syncSide = () => { sideLabel.textContent = lentiSide === 0 ? "von vorn" : lentiSide < 0 ? `von links, ${-lentiSide}°` : `von rechts, ${lentiSide}°`; };
+sideRange.addEventListener("input", () => { lentiSide = Number(sideRange.value); store.set("lentiSide", lentiSide); syncSide(); showLenti(); });
+sideRange.addEventListener("dblclick", () => { sideRange.value = "0"; lentiSide = 0; store.set("lentiSide", 0); syncSide(); showLenti(); });
+syncSide();
+viewPreview.el.append(h("div", { class: "view-tools lenti-only angle-bar" }, h("span", { class: "hint" }, "Blickwinkel"), sideRange, sideLabel));
 let compare3d = store.get("compare3d", false);
 const compare3dBtn = button("Vergleich", () => { compare3d = !compare3d; store.set("compare3d", compare3d); updateCompare3d(); },
   { icon: "swap", cls: "small", title: "Links vom Teiler das flache Originalbild, rechts der Druck als Relief mit Tiefe. Teiler mit der Maus verschieben." });
@@ -484,14 +519,23 @@ const STEP_HINTS_LITHO = [
   "Ergebnis prüfen: 3D-Ansicht mit „Licht an“ und Vergleich mit dem Original.",
   "Exportieren schreibt die STL der Lithophanie und ein Vorschaubild im Gegenlicht.",
 ];
+// Lentikularbild: zwei Bilder, Rippen statt Schichten, Farben direkt aus dem Stapel
+const STEPS_LENTI = ["Bilder", "Rippen", "Filamente", "Vorschau", "Export"];
+const STEP_HINTS_LENTI = [
+  "Erstes Bild öffnen oder ins Fenster ziehen, das zweite links unter „Lentikularbild“ wählen.",
+  "Links Breite, Rippenbreite und Rippenhöhe einstellen.",
+  "Rechts die Filamente wählen: Jede Stelle bekommt das ähnlichste Filament des Stapels.",
+  "Ergebnis prüfen: Blickwinkel über dem Bild verschieben oder das Modell in der 3D-Ansicht drehen.",
+  "Exportieren schreibt je Filament ein Teil als STL, dazu die Grundplatte und zwei Ansichten.",
+];
 let step = 0;
 const stepsEl = h("div", { class: "steps" });
 const stepHint = h("div", { class: "step-hint" });
 const flash = (el: HTMLElement) => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
 function renderSteps() {
   clear(stepsEl);
-  const litho = !!state.settings.litho, hints = litho ? STEP_HINTS_LITHO : STEP_HINTS;
-  (litho ? STEPS_LITHO : STEPS).forEach((label, i) => {
+  const kind = kindOf(), hints = kind === "litho" ? STEP_HINTS_LITHO : kind === "lenti" ? STEP_HINTS_LENTI : STEP_HINTS;
+  (kind === "litho" ? STEPS_LITHO : kind === "lenti" ? STEPS_LENTI : STEPS).forEach((label, i) => {
     if (i) stepsEl.append(h("div", { class: "step-sep" }));
     stepsEl.append(h("button", { class: "step" + (i === step ? " current" : i < step ? " done" : ""), title: hints[i], onclick: () => goStep(i) },
       h("i", null, i < step ? "✓" : String(i + 1)), label));
@@ -505,7 +549,7 @@ function goStep(i: number) {
   step = i; renderSteps();
   const sections = [...left.querySelectorAll("details")] as HTMLDetailsElement[];
   if (i === 0) { if (!state.image) openImage(); else showTab(1); }
-  if (i === 1) { sections.forEach((d, k) => (d.open = k < 2)); left.scrollTop = 0; flash(left); showTab(0); }
+  if (i === 1) { sections.forEach((d, k) => (d.open = k < 2 || d === lentiSection)); left.scrollTop = 0; flash(left); showTab(0); }
   if (i === 2) { if (state.settings.litho) { lithoSection.open = true; left.scrollTop = 0; flash(lithoSection); } else flash(stack.el); showTab(0); }
   if (i === 3) { showTab(0); if (!compareOn) { compareOn = true; store.set("compare", true); } updateCompare(); }
   if (i === 4) exportAll();
@@ -666,7 +710,7 @@ function showPreview() {
   else viewPreview.set(state.previewRgba, previewDim[0], previewDim[1]);
 }
 async function livePreview() {
-  if (!state.image || state.settings.litho || running) return;
+  if (!state.image || kindOf() !== "relief" || running) return;
   if (liveBusy) { livePending = true; return; }
   liveBusy = true;
   try {
@@ -686,7 +730,9 @@ async function rebuild() {
   running = true; busy.classList.add("on");
   compute.setIslands(state.islands);
   try {
+    if (state.settings.lenti) { await rebuildLenti(); return; }
     if (state.settings.litho) { await rebuildLitho(); return; }
+    if (lentiState) { lentiState = null; view3d.setZScale(Number(zRange.value)); }
     const r = await compute.preview(state.settings, activeStops(), nightLight());
     state.result = r;
     state.previewRgba = new Uint8ClampedArray(r.preview); previewDim = [r.width, r.height];
@@ -730,6 +776,102 @@ async function rebuildLitho() {
   const g = (r.volume_mm3 / 1000) * 1.24;
   setStatus([`<b>Lithophanie</b>`, `${r.size[0].toFixed(0)} × ${r.size[1].toFixed(0)} × ${r.size[2].toFixed(0)} mm`,
     `Wand ${state.settings.litho_min_mm.toFixed(2)}–${state.settings.litho_max_mm.toFixed(1)} mm`, `≈ ${g.toFixed(0)} g`, `≈ ${(r.triangles / 1e6).toFixed(2)} Mio. Dreiecke`, r.note]);
+}
+
+// ------------------------------------------------------------------ Lentikularbild
+let lentiState: { model: LentiModel; print: LentiPrint; palette: Filament[] } | null = null;
+/** Farben des Lentikularbilds: die Filamente des Stapels von unten nach oben, jedes nur einmal. Die Reihenfolge ist
+ *  zugleich der Platz im Filamentwechsler. */
+function lentiPalette(): Filament[] {
+  const seen = new Set<string>();
+  return ordered(activeStops()).map((s) => s.filament).filter((f) => { const k = filamentKey(f); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+const toRgba = (rgb: Float32Array) => {
+  const out = new Uint8ClampedArray((rgb.length / 3) * 4);
+  for (let i = 0, o = 0; i < rgb.length; i += 3, o += 4) { out[o] = rgb[i] * 255; out[o + 1] = rgb[i + 1] * 255; out[o + 2] = rgb[i + 2] * 255; out[o + 3] = 255; }
+  return out;
+};
+/** 2D-Vorschau aus dem gewählten Blickwinkel zeichnen. */
+function showLenti() {
+  if (!lentiState || !state.settings.lenti) return;
+  const v = lentiView(lentiState.model, lentiState.palette, -lentiSide);
+  state.previewRgba = toRgba(v.rgb); previewDim = [v.width, v.height];
+  viewPreview.set(state.previewRgba, v.width, v.height);
+}
+async function rebuildLenti() {
+  const palette = lentiPalette();
+  const r = await compute.lenti(state.settings, palette);
+  state.result = null; state.nightRgba = null;
+  lentiState = { model: r.model, print: r.print, palette };
+  showLenti();
+  viewPreview.setCompare(null); view3d.setCompare(false); view3d.setCut(null);
+  // die Rippen sind unverzerrt zu sehen: Mit überhöhter Höhe würde der Blickwinkel nicht mehr stimmen
+  view3d.setZScale(1);
+  view3d.setMesh({ ...r.mesh, size: [r.model.width, r.model.depth] });
+  updateSlots();
+  renderLentiInfo();
+  const m = r.model;
+  setStatus([`<b>Lentikularbild</b>`, `${m.width.toFixed(1)} × ${m.depth.toFixed(1)} × ${(m.base + m.skin + m.height).toFixed(1)} mm`, `${m.cols} Rippen`, `${r.print.changes} Filamentwechsel`]);
+}
+/** Kennzahlen und Hinweise zum Lentikularbild. */
+function renderLentiInfo() {
+  clear(lentiInfo);
+  if (!lentiState) return;
+  const { model: m, print: p, palette } = lentiState, limit = slotLimit(slicer), used = p.colors;
+  const line = (text: string, warn = false) => lentiInfo.append(h("p", { class: "hint" + (warn ? " warn" : "") }, text));
+  if (!state.night) line("Noch kein zweites Bild gewählt: Beide Seiten zeigen dasselbe Motiv.", true);
+  line(`Druck ${num(m.width, 0)} × ${num(m.depth, 0)} × ${num(m.base + m.skin + m.height, 1)} mm mit ${m.cols} Rippen. Jedes Bild hat ${m.icols} × ${m.rows} Bildpunkte.`);
+  line(`Ab etwa ${num(lentiPureAngle(m), 0)}° von der Seite ist nur noch ein Bild zu sehen, von vorn beide ineinander.`);
+  line(`Druck: ${p.layers} Schichten mit je ${used} Farben, das sind etwa ${p.changes} Filamentwechsel (bei ${num(LENTI_LAYER_MM, 1)} mm Schichthöhe).`);
+  const through = lentiThrough(m, palette);
+  if (through > 0.15) line(`Durch die Farben scheint im Mittel zu etwa ${num(through * 100, 0)} % die Grundplatte, sie wirken dadurch heller. Kräftiger werden sie mit einer dickeren Farbschicht oder mit Filamenten mit kleinerem TD.`, through > 0.35);
+  // Farben, die kaum vorkommen, kosten trotzdem in jeder Schicht einen Wechsel
+  if (used > 2) palette.forEach((f, k) => {
+    if (m.share[k] > 0 && m.share[k] < 0.01) line(`„${filamentLabel(f)}“ kommt kaum vor (${num(Math.max(0.1, m.share[k] * 100), 1)} % der Fläche), braucht aber in jeder Schicht einen Filamentwechsel. Im Stapel ausblenden spart ${p.layers} Wechsel.`);
+  });
+  if (palette.length < 2) line("Der Stapel hat nur ein Filament: Für ein Bild braucht es mindestens zwei Farben.", true);
+  if (limit !== null && used > limit) line(`Die Bilder brauchen ${used} Filamente, der Filamentwechsler hat ${limit} Plätze. Abhilfe: Filamente aus dem Stapel nehmen oder ausblenden.`, true);
+}
+async function exportLenti() {
+  const palette = lentiPalette();
+  busy.classList.add("on");
+  try {
+    const r = await compute.lentiExport(state.settings, palette);
+    const safe = (t: string) => t.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+    const tag = fileSuffix("_lentikular"), baseName = safe(tr("Grundplatte"));
+    const path = await saveFile(`${state.name}${tag}_0_${baseName}.stl`, new Uint8Array(r.base), [{ name: "STL", extensions: ["stl"] }]);
+    if (!path) return;
+    // die übrigen Dateien bekommen denselben Namensanfang wie die Grundplatte
+    const stem = path.replace(/\.[^.\\/]+$/, "").replace(/_0_[^_\\/]*$/, "") + ".stl";
+    const files = [path];
+    const parts: { slot: number; filament: Filament }[] = [];
+    for (let k = 0; k < palette.length; k++) {
+      const stl = r.parts[k];
+      if (!stl) continue;
+      files.push(await saveSibling(stem, `_${k + 1}_${safe(tr(filamentLabel(palette[k])))}.stl`, new Uint8Array(stl)));
+      parts.push({ slot: k + 1, filament: palette[k] });
+    }
+    const sides = lang === "de" ? ["_ansicht_links.png", "_ansicht_rechts.png"] : ["_view_left.png", "_view_right.png"];
+    for (let i = 0; i < 2; i++) files.push(await saveSibling(stem, sides[i], await rgbaToPng(new Uint8ClampedArray(r.views[i].rgba), r.views[i].width, r.views[i].height)));
+    if (step < 4) { step = 4; renderSteps(); }
+    const m = r.model, p = r.print, g = (v: number) => { const w = (v / 1000) * 1.24; return w < 0.1 ? `unter ${num(0.1, 1)} g` : `etwa ${num(w, w < 10 ? 1 : 0)} g`; };
+    const light = palette[lentiLightest(palette)];
+    const close = modal("Export fertig", h("div", { style: { lineHeight: "1.6" } },
+      h("p", { style: { marginTop: 0 } }, "Geschrieben:"),
+      h("ul", { style: { paddingLeft: "18px" } }, ...files.map((f) => h("li", null, f.split(/[\\/]/).pop()!))),
+      h("p", { class: "hint" }, `Druck ${num(m.width, 0)} × ${num(m.depth, 0)} × ${num(m.base + m.skin + m.height, 1)} mm, ${m.cols} Rippen, ${(r.triangles / 1e6).toFixed(2)} Mio. Dreiecke.`),
+      h("div", { style: { display: "grid", gap: "4px", margin: "0 0 8px" } },
+        h("div", { style: { display: "flex", gap: "8px", alignItems: "center" } }, h("div", { class: "swatch", style: { background: "#888", width: "16px", height: "16px" } }), h("span", null, "Grundplatte"), h("span", { class: "hint" }, `${g(p.baseVolume)}, am besten in ${filamentLabel(light)}`)),
+        ...parts.map((x) => h("div", { style: { display: "flex", gap: "8px", alignItems: "center" } },
+          h("div", { class: "swatch", style: { background: x.filament.color, width: "16px", height: "16px" } }),
+          h("span", null, `Teil ${x.slot}`), h("span", { "data-notr": true }, tr(filamentLabel(x.filament))), h("span", { class: "hint" }, g(p.volumes[x.slot - 1]))))),
+      h("p", { class: "hint" }, "Im Slicer alle STL-Dateien zusammen laden. Auf die Frage, ob sie als ein Objekt aus mehreren Teilen geladen werden sollen, mit Ja antworten: Dann liegen die Teile richtig zueinander. Danach jedem Teil sein Filament zuweisen, die Nummer im Dateinamen entspricht der Reihenfolge im Stapel."),
+      h("p", { class: "hint" }, `Gedruckt wird flach mit den Rippen nach oben, mit 100 % Füllung. Bei ${num(LENTI_LAYER_MM, 1)} mm Schichthöhe sind es über der Grundplatte ${p.layers} Schichten mit je ${p.colors} Farben, etwa ${p.changes} Filamentwechsel. Eine feinere Schichthöhe macht die Flanken glatter, braucht aber entsprechend mehr Wechsel.`),
+      h("p", { class: "hint" }, "Die Grundplatte am besten im hellsten Filament drucken: In den Tälern ist die Farbschicht dünn, dort scheint die Platte durch. Die Vorschau rechnet damit."),
+      h("p", { class: "hint" }, "Aufgestellt oder aufgehängt zeigt der Druck von links das erste und von rechts das zweite Bild.")),
+      [button("OK", () => close(), { cls: "primary" })]);
+  } catch (e: any) { toast("Export fehlgeschlagen: " + e.message, "err"); }
+  finally { if (!running) busy.classList.remove("on"); }
 }
 
 async function exportLitho() {
@@ -879,6 +1021,8 @@ function assistData(): AssistData | null {
 /** Plätze der Filamente für den Filamentwechsler aus dem zuletzt berechneten Ergebnis (samt Farbinseln). */
 function updateSlots() {
   const limit = slotLimit(slicer), r = state.result;
+  // Lentikularbild: Die Plätze folgen der Reihenfolge im Stapel; die Hinweise dazu stehen in seinem Abschnitt
+  if (state.settings.lenti) { stack.setSlots(new Map(lentiPalette().map((f, i) => [filamentKey(f), i + 1])), limit); renderLentiInfo(); return; }
   if (limit === null || !r || state.settings.litho) { stack.setSlots(null, null); return; }
   const plan = planSlots(r.usage);
   stack.setSlots(new Map(plan.filaments.map((f, i) => [filamentKey(f), i + 1])), limit);
@@ -922,9 +1066,9 @@ async function chooseNight() {
   if (!f) return;
   let img: Raster;
   try { img = await decodeImage(f.bytes); } catch { toast("Das Bild konnte nicht gelesen werden.", "err"); return; }
-  const first = !state.night;
+  const first = !state.night && !state.settings.lenti;
   await setNight(img, isPng(f.bytes) ? f.bytes : null);
-  nightView.show = true;
+  nightView.show = !state.settings.lenti;
   markDirty(); showTab(0);
   await rebuild();
   // Beim ersten Mal: Reicht das Filament der Rückplatte nicht für den Ausgleich, ein passendes aus der Bibliothek nehmen
@@ -947,13 +1091,16 @@ async function removeNight() {
 function syncNight() {
   const has = !!state.night;
   nightPickBtn.replaceChildren(icon("image"), has ? "Anderes Bild …" : "Nachtbild wählen …");
-  nightRemoveBtn.style.display = nightThumb.style.display = nightSettings.style.display = has ? "" : "none";
+  lentiPickBtn.replaceChildren(icon("image"), has ? "Anderes Bild …" : "Zweites Bild wählen …");
+  nightRemoveBtn.style.display = nightThumb.style.display = nightSettings.style.display = lentiRemoveBtn.style.display = lentiThumb.style.display = has ? "" : "none";
   if (has) {
-    const n = state.night!, k = Math.min(1, 96 / Math.max(n.width, n.height));
-    nightThumb.width = Math.max(1, Math.round(n.width * k)); nightThumb.height = Math.max(1, Math.round(n.height * k));
-    const g = nightThumb.getContext("2d")!;
-    g.imageSmoothingQuality = "high";
-    g.drawImage(rasterCanvas(n), 0, 0, nightThumb.width, nightThumb.height);
+    const n = state.night!, k = Math.min(1, 96 / Math.max(n.width, n.height)), src = rasterCanvas(n);
+    for (const c of [nightThumb, lentiThumb]) {
+      c.width = Math.max(1, Math.round(n.width * k)); c.height = Math.max(1, Math.round(n.height * k));
+      const g = c.getContext("2d")!;
+      g.imageSmoothingQuality = "high";
+      g.drawImage(src, 0, 0, c.width, c.height);
+    }
   }
   nightFilBtn.replaceChildren(h("div", { class: "swatch", style: { background: nightView.filament.color } }), h("span", { "data-notr": true }, `${tr(nightView.filament.name)} · TD ${num(nightView.filament.td, 1)}`));
   fields.night_max_mm!.el.style.display = state.settings.night_auto ? "none" : "";
@@ -1110,6 +1257,7 @@ async function newProject() {
 async function exportAll() {
   if (!state.image) { toast("Bitte zuerst ein Bild öffnen."); return; }
   try { validate(state.settings); } catch (e: any) { toast(e.message, "err"); return; }
+  if (state.settings.lenti) return exportLenti();
   if (state.settings.litho) return exportLitho();
   busy.classList.add("on");
   try {
@@ -1215,11 +1363,11 @@ async function exportOriginal() {
 }
 
 async function exportPreview() {
-  const r = state.result;
-  if (!r || !state.previewRgba) { toast("Noch keine Vorschau berechnet."); return; }
-  // gespeichert wird, was die Vorschau gerade zeigt: das Tagbild oder das Nachtbild im Gegenlicht
-  const nightShown = nightView.show && !!state.nightRgba;
-  const png = nightShown ? await rgbaToPng(state.nightRgba!, r.width, r.height) : await rgbaToPng(state.previewRgba, previewDim[0], previewDim[1]);
+  const r = state.result, lenti = state.settings.lenti && !!lentiState;
+  if ((!r && !lenti) || !state.previewRgba) { toast("Noch keine Vorschau berechnet."); return; }
+  // gespeichert wird, was die Vorschau gerade zeigt: das Tagbild, das Nachtbild im Gegenlicht oder das Lentikularbild aus dem gewählten Blickwinkel
+  const nightShown = !!r && nightView.show && !!state.nightRgba;
+  const png = nightShown ? await rgbaToPng(state.nightRgba!, r!.width, r!.height) : await rgbaToPng(state.previewRgba, previewDim[0], previewDim[1]);
   const p = await saveFile(state.name + fileSuffix(nightShown ? "_nachtvorschau.png" : "_vorschau.png"), png, [{ name: "PNG", extensions: ["png"] }]);
   if (p) toast("Vorschaubild gespeichert.", "ok");
 }
