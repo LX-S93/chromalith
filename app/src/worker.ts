@@ -108,7 +108,7 @@ self.onmessage = (ev: MessageEvent) => {
         width: hm.width, height: hm.height, preview: preview.buffer,
         layerCount: layerCount(hm), minLayer: minLayer(hm), size: sizeMm(hm), maxZ: maxZ(hm),
         mode: effectiveMode(p), simStops: est, usage: filamentUsage(hm, est), stackLayers: hm.restLayers ?? layerCount(hm), border: hm.border_px,
-        triangles: 2 * fullW * Math.round(fullW * hm.height / hm.width),
+        triangles: 2 * fullW * Math.round(fullW * hm.height / hm.width), feet: hm.feet ?? null,
         mesh: { vertices: mesh.vertices.buffer, faces: mesh.faces.buffer, colors: colors.buffer, orig: orig.buffer, top: mesh.topIndex.buffer, size: sizeMm(small) },
       };
       transfer = [preview.buffer, mesh.vertices.buffer, mesh.faces.buffer, colors.buffer, orig.buffer, mesh.topIndex.buffer];
@@ -192,7 +192,7 @@ self.onmessage = (ev: MessageEvent) => {
       }
       write3mf(mesh, hm, est, ev.data.name, ev.data.slicer ?? {}).then(({ data: tmf, info }) => {
         const result = { stl: stl.buffer, threemf: tmf.buffer, threemfInfo: info, report: planReport(hm, est, ev.data.name),
-          json: JSON.stringify(planJson(hm, est), null, 2), preview: preview.buffer, width: hm.width, height: hm.height, night: nightOut };
+          json: JSON.stringify(planJson(hm, est), null, 2), preview: preview.buffer, width: hm.width, height: hm.height, night: nightOut, feet: hm.feet ?? null };
         (self as any).postMessage({ id, ok: true, result }, [stl.buffer, tmf.buffer, preview.buffer, ...extra]);
       }, (e) => (self as any).postMessage({ id, ok: false, error: String(e?.message ?? e) }));
       return;

@@ -1,5 +1,5 @@
 /** Schnittstelle zum Rechen-Worker (Promise-basiert). */
-import type { ColorStop, Filament, HeightSettings, LentiModel, LentiPrint, LithoLight, NightInfo, NightLight, Raster, ThreeMfInfo, ThreeMfOptions } from "./core";
+import type { ColorStop, FeetInfo, Filament, HeightSettings, LentiModel, LentiPrint, LithoLight, NightInfo, NightLight, Raster, ThreeMfInfo, ThreeMfOptions } from "./core";
 
 const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
 let nextId = 1;
@@ -32,6 +32,8 @@ export interface PreviewResult {
   mesh: { vertices: ArrayBuffer; faces: ArrayBuffer; colors: ArrayBuffer; orig: ArrayBuffer; top: ArrayBuffer; size: [number, number] };
   /** Tag-und-Nacht-Bild: Vorschau im Gegenlicht und Kennzahlen der Rückplatte */
   night?: NightResult;
+  /** Aussparungen für Füße in der Unterseite */
+  feet?: FeetInfo | null;
 }
 export interface NightResult { preview: ArrayBuffer; info: NightInfo; through: number; volume_mm3: number }
 
@@ -48,7 +50,7 @@ export const preview = (settings: HeightSettings, stops: ColorStop[], night: Nig
 export const autoDistribute = (settings: HeightSettings, stops: ColorStop[]) => call<{ stops: ColorStop[] }>({ type: "auto", settings, stops });
 export const exportAll = (settings: HeightSettings, stops: ColorStop[], name: string, slicer: ThreeMfOptions = {}, night: NightLight | null = null) =>
   call<{ stl: ArrayBuffer; threemf: ArrayBuffer; threemfInfo: ThreeMfInfo; report: string; json: string; preview: ArrayBuffer; width: number; height: number;
-    night: (NightResult & { stl: ArrayBuffer; triangles: number }) | null }>({ type: "export", settings, stops, name, slicer, night });
+    night: (NightResult & { stl: ArrayBuffer; triangles: number }) | null; feet: FeetInfo | null }>({ type: "export", settings, stops, name, slicer, night });
 export const previewImage = (settings: HeightSettings, stops: ColorStop[], maxSide = 520) =>
   call<{ width: number; height: number; preview: ArrayBuffer }>({ type: "preview", settings, stops, maxSide, lite: true });
 export const suggest = (settings: HeightSettings, stops: ColorStop[], library: ColorStop["filament"][], count: number, mode: string, progress?: (f: number) => void) =>

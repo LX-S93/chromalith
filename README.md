@@ -48,7 +48,8 @@ by size and SHA-256 before it is started.
 - Filament stack with live preview of the colour blending, based on each filament's **TD**
 - Automatic distribution of colour changes and **filament suggestions** from your library
 - 2D preview with before/after slider, 3D view with layer slider and flat-original-vs-relief comparison
-- Shapes: rectangle, circle, centre hole, raised rim, clock numerals; scale and move the motif inside the shape
+- Shapes: rectangle, square, circle, rounded corners, centre hole, raised rim, clock numerals; pick the image
+  section by dragging and zooming the image right in the preview
 - Colour islands: recolour selected areas
 - Export: STL, 3MF as a ready-to-slice project for **Bambu Studio / OrcaSlicer with AMS** (filaments on slots,
   layer heights and filament changes included) or with colour changes for PrusaSlicer, colour change list
@@ -62,6 +63,8 @@ by size and SHA-256 before it is started.
   single-colour back plate behind the colour relief, with a preview of both views
 - **Lenticular image:** a ribbed surface that shows one image from the left and another from the right, printed
   in several colours with a filament changer (AMS); preview with a viewing-angle slider, one STL per filament
+- **Coasters:** round or square with a raised rim against drips, adjustable thickness and recesses in the
+  underside for rubber feet or felt pads
 - **Lithophanes:** flat, curved, cylinder (lampshade) and sphere (ornament with hanging loop and optional
   screw cap for the light); place, scale and repeat the image on the body without distortion; light simulation
   with a visible lamp and different light sources; STL export
@@ -202,6 +205,31 @@ What to expect, honestly:
   filaments with a small TD give stronger colours.
 - The second image is shared with the day-and-night image of the colour relief.
 - This is a simulation; ridges only run top to bottom so far.
+
+## Coasters
+
+A colour relief as a coaster for cups and glasses. Open the image, then open the section **Coaster** on the left:
+
+1. **Set up round** or **Set up square** sets the outline, 100 mm size, a 2 mm raised rim against drips and a
+   thickness of at least 1.6 mm everywhere. Everything can be changed afterwards.
+2. The button **Crop** above the preview is now on: **drag** the image to the spot you want on the coaster, the
+   **mouse wheel** makes it larger or smaller, a double-click resets both. The whole image can be moved, not just
+   the centred part. Where the image does not cover the shape, the area takes the image's edge colour.
+3. **Thickness** moves the whole picture up or down: only the bottom filament gets thicker or thinner, the
+   picture and its colour changes stay the same.
+4. **Feet** adds 3 or 4 round recesses in the underside for self-adhesive rubber feet or felt pads. They sit as
+   far out as possible, all have the same depth and keep at least 0.6 mm of material above them. Chromalith says
+   so when the coaster is too thin or too small for them. In the 3D view you see them from below.
+
+Good to know:
+
+- For hot cups print in PETG: PLA softens at about 55 °C.
+- A colour relief is not perfectly flat. A small difference between minimum and maximum height lets glasses
+  stand steadier.
+- There is no large recess for a cork sheet: a wide recess on the bed side cannot be printed cleanly without
+  supports. Cork or felt can simply be glued onto the flat underside.
+- Square outline and rounded corners (**Shape → Outline** and **Corner radius**) and **Crop** work for every
+  colour relief, not only for coasters.
 
 ## Support
 

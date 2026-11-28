@@ -284,3 +284,6 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 
 @media (max-width: 1180px) { .mode-pill button { padding: 6px 8px; font-size: 12px; } .topbar { gap: 5px; padding: 0 8px; } .brand { margin-right: 4px; } }
 @media (max-height: 760px) { .stack-info div { display: none; } }
 .stop .title small.range { font-size: 11px; letter-spacing: -.1px; }
+/* Ausschnitt wählen: Ziehen verschiebt das Bild, nicht die Ansicht */
+.canvas-view.cropping { cursor: move; }
+.canvas-view canvas.ovl { z-index: 2; }

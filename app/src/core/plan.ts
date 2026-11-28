@@ -1,7 +1,7 @@
 /** Farbwechsel-Plan (welches Filament ab welcher Schicht) und Farbsimulation. */
 import { hexToRgb, linearToSrgb, srgbToLinear } from "./color";
 import { filamentLabel, type Filament } from "./filaments";
-import { layerBottomZ, layerCount, layerIndex, layerTopZ, maxZ, minLayer, sizeMm, type HeightMap } from "./heightmap";
+import { layerBottomZ, layerCount, layerIndex, layerTopZ, maxZ, minLayer, sizeMm, type HeightMap, type HeightSettings } from "./heightmap";
 
 /** Deckkraft einer Lage der Dicke t: 1 - exp(-K t / TD); bei t = TD sind 95 % abgedeckt. */
 export const OPACITY_K = Math.log(20);
@@ -49,6 +49,24 @@ export function filamentAtLayer(stops: ColorStop[], layer: number): Filament | n
   let cur: Filament | null = null;
   for (const s of normalized(stops)) if (s.start_layer <= layer) cur = s.filament;
   return cur;
+}
+
+/** Macht das Relief dicker oder dünner, ohne das Bild zu ändern: Minimale und maximale Höhe und alle Wechsel
+ *  wandern um dieselbe Zahl ganzer Schichten, das unterste Filament wird entsprechend dicker. `targetMax` ist die
+ *  gewünschte maximale Höhe in mm. Ändert `s` und `stops` und liefert die Zahl der verschobenen Schichten
+ *  (begrenzt: nicht dünner als die erste Schicht, und kein Wechsel rutscht unter seinen Vorgänger). */
+export function shiftThickness(s: HeightSettings, stops: ColorStop[], targetMax: number): number {
+  const step = s.layer_height_mm;
+  let d = Math.round((targetMax - s.max_height_mm) / step);
+  d = Math.max(d, Math.ceil((s.base_layer_mm - s.min_height_mm) / step - 1e-6));
+  const order = [...stops].sort((a, b) => a.start_layer - b.start_layer);
+  order.forEach((st, i) => { if (i > 0) d = Math.max(d, i + 1 - st.start_layer); });
+  if (!d) return 0;
+  const r = (v: number) => Math.round(v * 1e4) / 1e4;
+  s.min_height_mm = r(s.min_height_mm + d * step); s.max_height_mm = r(s.max_height_mm + d * step);
+  if (s.border_height_mm > 0) s.border_height_mm = r(s.border_height_mm + d * step);
+  order.forEach((st, i) => { if (i > 0) st.start_layer += d; });
+  return d;
 }
 
 /** Simulierte Draufsicht (sRGB, 3/Punkt). Schichten werden von unten nach oben übereinandergelegt. */

@@ -20,7 +20,7 @@ export const HEIGHT_MODES = {
 export type HeightMode = keyof typeof HEIGHT_MODES;
 export type EffectiveMode = Exclude<HeightMode, "auto">;
 
-export const SHAPES = { rect: "Rechteck", circle: "Rund" } as const;
+export const SHAPES = { rect: "Rechteck", circle: "Rund", square: "Quadrat" } as const;
 export type Shape = keyof typeof SHAPES;
 export const BREAKOUTS = { off: "Aus", attached: "Aufliegend (ohne Stützen)", floating: "Schwebend (mit Stützen)" } as const;
 export type Breakout = keyof typeof BREAKOUTS;
@@ -103,6 +103,12 @@ export interface HeightSettings {
   lenti_base_mm: number;
   /** Farbige Lage zwischen Grundplatte und Rippen (mm): Je dicker, desto weniger scheint die Grundplatte durch */
   lenti_skin_mm: number;
+  /** Eckenradius für Rechteck und Quadrat (mm) */
+  corner_mm: number;
+  /** Aussparungen in der Unterseite für Füße (z. B. Gummipuffer): Anzahl (0 = keine), Durchmesser und Tiefe */
+  feet: number;
+  feet_mm: number;
+  feet_depth_mm: number;
 }
 
 export const DEFAULT_SETTINGS: HeightSettings = {
@@ -117,6 +123,7 @@ export const DEFAULT_SETTINGS: HeightSettings = {
   litho_img_deg: 150, litho_img_x: 0, litho_img_y: 0, litho_repeat: false, litho_height_mm: 0, litho_cap: false, litho_cap_mm: 26, litho_rest_mm: 2.2,
   night_min_mm: 0.6, night_max_mm: 3, night_auto: true, night_comp: 1,
   lenti: false, lenti_pitch_mm: 2, lenti_height_mm: 1, lenti_base_mm: 0.6, lenti_skin_mm: 0.4,
+  corner_mm: 0, feet: 0, feet_mm: 10, feet_depth_mm: 1,
 };
 
 export function normalizeSettings(d: Partial<HeightSettings> | undefined): HeightSettings {
@@ -149,8 +156,10 @@ export interface HeightMap {
   rgb: Float32Array; // Originalfarben je Punkt (3 pro Punkt)
   border_px: number;
   mask: Uint8Array | null; // 1 = Material vorhanden
-  /** Unterseite je Punkt in mm (schwebende Teile); fehlt = überall 0 */
+  /** Unterseite je Punkt in mm (schwebende Teile, Aussparungen für Füße); fehlt = überall 0 */
   bottom?: Float32Array | null;
+  /** Aussparungen für Füße: gewünschte und tatsächliche Tiefe, Zahl und dünnste Stelle darüber (mm) */
+  feet?: FeetInfo | null;
   /** Motiv (1) gegenüber Hintergrund (0), nur während des Aufbaus */
   subject?: Uint8Array | null;
   /** Farbinseln: zusätzliche Wechsel und Schichtzahl des Reliefs ohne Inseln */
@@ -174,48 +183,56 @@ export function minLayer(hm: HeightMap): number {
   return layerIndex(m === Infinity ? 0 : m, hm.base_layer_mm, hm.layer_height_mm);
 }
 
-/** Motiv innerhalb des Rasters verkleinern/vergrößern und verschieben. Die Fläche außerhalb des Motivs wird
- *  mit der Randfarbe des Bildes gefüllt, damit ein einfarbiger Hintergrund nahtlos weiterläuft. */
-function placeImage(w: number, h: number, rgb: Float32Array, alpha: Float32Array, sc: number, ox: number, oy: number) {
-  const fill = [0, 0, 0]; let fn = 0;
-  const edge = (i: number) => { if (alpha[i] >= 0.5) { fill[0] += rgb[i * 3]; fill[1] += rgb[i * 3 + 1]; fill[2] += rgb[i * 3 + 2]; fn++; } };
-  for (let x = 0; x < w; x++) { edge(x); edge((h - 1) * w + x); }
-  for (let y = 0; y < h; y++) { edge(y * w); edge(y * w + w - 1); }
-  const out = new Float32Array(w * h * 3), oa = new Float32Array(w * h);
-  const cx = (w - 1) / 2, cy = (h - 1) / 2;
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++) {
-      const sx = (x - cx - ox) / sc + cx, sy = (y - cy - oy) / sc + cy, o = y * w + x;
-      if (sx < 0 || sy < 0 || sx > w - 1 || sy > h - 1) {
-        if (fn) { out[o * 3] = fill[0] / fn; out[o * 3 + 1] = fill[1] / fn; out[o * 3 + 2] = fill[2] / fn; oa[o] = 1; }
-        continue;
-      }
-      const x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = sx - x0, fy = sy - y0;
-      const i00 = y0 * w + x0, i10 = y0 * w + x1, i01 = y1 * w + x0, i11 = y1 * w + x1;
-      const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
-      for (let c = 0; c < 3; c++) out[o * 3 + c] = rgb[i00 * 3 + c] * w00 + rgb[i10 * 3 + c] * w10 + rgb[i01 * 3 + c] * w01 + rgb[i11 * 3 + c] * w11;
-      oa[o] = alpha[i00] * w00 + alpha[i10] * w10 + alpha[i01] * w01 + alpha[i11] * w11;
-    }
-  return { w, h, rgb: out, alpha: oa };
+/** Seitenverhältnis (Breite / Höhe) der Form: Rund und Quadrat sind gleichseitig, das Rechteck folgt dem Bild. */
+export const shapeAspect = (imgW: number, imgH: number, s: HeightSettings) => (s.shape === "rect" ? imgW / imgH : 1);
+
+/** Lage des Bildes auf der Form: Bei Größe 1 ohne Versatz füllt das Bild die Form, was übersteht, liegt mittig
+ *  außerhalb. Größe und Versatz wählen den Ausschnitt; verschoben wird das ganze Bild, auch seine überstehenden
+ *  Teile. Liefert die Abbildung von Bildpunkten (sx, sy) auf die Form (u, v von 0 bis 1): u = ax·sx + bx,
+ *  v = ay·sy + by. */
+export function imagePlacement(imgW: number, imgH: number, s: HeightSettings): { ax: number; bx: number; ay: number; by: number } {
+  const ar = shapeAspect(imgW, imgH, s), cw = Math.min(imgW, imgH * ar), ch = cw / ar;
+  const sc = Math.max(0.05, s.image_scale ?? 1), ax = sc / cw, ay = sc / ch;
+  return { ax, bx: 0.5 + (s.image_x ?? 0) / 100 - (imgW / 2) * ax, ay, by: 0.5 + (s.image_y ?? 0) / 100 - (imgH / 2) * ay };
 }
 
-/** Bild auf Modellraster bringen. Rückgabe: RGB (3/Punkt) und Alpha. */
+/** Bild auf Modellraster bringen. Rückgabe: RGB (3/Punkt) und Alpha. Wo das Bild die Form nicht bedeckt, steht
+ *  die Randfarbe des Bildes, damit ein einfarbiger Hintergrund nahtlos weiterläuft. */
+/** Mittlere Farbe des Bildrands (0..1): Damit wird die Form gefüllt, wo das verschobene oder verkleinerte Bild sie nicht bedeckt. */
+export function edgeColor(img: Raster): [number, number, number] | null {
+  const fill = [0, 0, 0]; let fn = 0;
+  const edge = (x: number, y: number) => { const i = (y * img.width + x) * 4; if (img.data[i + 3] >= 0.5) { fill[0] += img.data[i]; fill[1] += img.data[i + 1]; fill[2] += img.data[i + 2]; fn++; } };
+  for (let x = 0; x < img.width; x++) { edge(x, 0); edge(x, img.height - 1); }
+  for (let y = 0; y < img.height; y++) { edge(0, y); edge(img.width - 1, y); }
+  return fn ? [fill[0] / fn, fill[1] / fn, fill[2] / fn] : null;
+}
 export function prepareImage(img: Raster, s: HeightSettings): { w: number; h: number; rgb: Float32Array; alpha: Float32Array } {
-  let src = img;
-  if (s.shape === "circle" && img.width !== img.height) {
-    const side = Math.min(img.width, img.height);
-    src = crop(img, Math.floor((img.width - side) / 2), Math.floor((img.height - side) / 2), side, side);
-  }
   const w = Math.max(2, Math.round(s.width_mm / s.pixel_size_mm) + 1);
-  const h = Math.max(2, Math.round((w * src.height) / src.width));
-  const r = resize(src, w, h);
+  const h = Math.max(2, Math.round(w / shapeAspect(img.width, img.height, s)));
+  const p = imagePlacement(img.width, img.height, s);
   const rgb = new Float32Array(w * h * 3), alpha = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    rgb[i * 3] = r.data[i * 4]; rgb[i * 3 + 1] = r.data[i * 4 + 1]; rgb[i * 3 + 2] = r.data[i * 4 + 2];
-    alpha[i] = r.data[i * 4 + 3];
+  // Ausschnitt des Bildes, der auf der Form liegt (in Bildpunkten), begrenzt auf das Bild
+  const cx0 = Math.max(0, -p.bx / p.ax), cx1 = Math.min(img.width, (1 - p.bx) / p.ax);
+  const cy0 = Math.max(0, -p.by / p.ay), cy1 = Math.min(img.height, (1 - p.by) / p.ay);
+  const ix0 = Math.floor(cx0 + 1e-6), iy0 = Math.floor(cy0 + 1e-6);
+  const iw = Math.min(img.width - ix0, Math.round(cx1 - cx0)), ih = Math.min(img.height - iy0, Math.round(cy1 - cy0));
+  // ... und wohin er im Raster kommt
+  const tx0 = Math.max(0, Math.round((p.ax * cx0 + p.bx) * w)), tx1 = Math.min(w, Math.round((p.ax * cx1 + p.bx) * w));
+  const ty0 = Math.max(0, Math.round((p.ay * cy0 + p.by) * h)), ty1 = Math.min(h, Math.round((p.ay * cy1 + p.by) * h));
+  const tw = tx1 - tx0, th = ty1 - ty0, any = iw >= 1 && ih >= 1 && tw >= 1 && th >= 1;
+  if (!any || tw < w || th < h) {
+    const fill = edgeColor(img);
+    if (fill) for (let i = 0; i < w * h; i++) { rgb[i * 3] = fill[0]; rgb[i * 3 + 1] = fill[1]; rgb[i * 3 + 2] = fill[2]; alpha[i] = 1; }
   }
-  const sc = s.image_scale ?? 1, ox = ((s.image_x ?? 0) / 100) * w, oy = ((s.image_y ?? 0) / 100) * h;
-  if (Math.abs(sc - 1) > 1e-3 || Math.abs(ox) > 1e-3 || Math.abs(oy) > 1e-3) return placeImage(w, h, rgb, alpha, Math.max(0.05, sc), ox, oy);
+  if (any) {
+    const whole = ix0 === 0 && iy0 === 0 && iw === img.width && ih === img.height;
+    const r = resize(whole ? img : crop(img, ix0, iy0, iw, ih), tw, th);
+    for (let y = 0; y < th; y++)
+      for (let x = 0; x < tw; x++) {
+        const i = (y * tw + x) * 4, o = (ty0 + y) * w + tx0 + x;
+        rgb[o * 3] = r.data[i]; rgb[o * 3 + 1] = r.data[i + 1]; rgb[o * 3 + 2] = r.data[i + 2]; alpha[o] = r.data[i + 3];
+      }
+  }
   return { w, h, rgb, alpha };
 }
 
@@ -410,6 +427,7 @@ export function buildHeightmap(img: Raster, s: HeightSettings, opt: BuildOptions
   else if (s.border_mm > 0) hm = addBorder(hm, s); // Rahmen und Herausragen schließen sich aus
   if (s.breakout !== "off") { applyBreakout(hm, s, opt.renderDigits); hm.subject = null; return hm; }
   applyShape(hm, s, opt.renderDigits);
+  applyFeet(hm, s);
   return hm;
 }
 
@@ -434,18 +452,20 @@ export function applyBreakout(hm: HeightMap, s: HeightSettings, renderDigits?: D
   const cx = (w - 1) / 2 + (s.breakout_x / 100) * w, cy = (h - 1) / 2 + (s.breakout_y / 100) * h;
   const radius = (Math.min(w - 1, h - 1) * k) / 2, hx = ((w - 1) * k) / 2, hy = ((h - 1) * k) / 2;
   const rim = s.rim_mm / ps, hole = s.hole_mm / 2 / ps;
+  const corner = s.shape === "circle" ? 0 : Math.min(Math.max(0, s.corner_mm ?? 0) / ps, hx, hy);
   const top = quantize(maxZ(hm) + s.raise_mm, hm.base_layer_mm, hm.layer_height_mm);
   const frame = new Uint8Array(n), mask = new Uint8Array(n), queue = new Int32Array(n);
   let head = 0, tail = 0;
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const i = y * w + x, dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy);
-      const inside = s.shape === "circle" ? r <= radius : Math.abs(dx) <= hx && Math.abs(dy) <= hy;
+      const sd = corner > 0 ? roundBox(dx, dy, hx, hy, corner) : 0;
+      const inside = s.shape === "circle" ? r <= radius : corner > 0 ? sd <= 1e-6 : Math.abs(dx) <= hx && Math.abs(dy) <= hy;
       if (!inside) continue;
       frame[i] = 1;
       if (hole > 0 && r < hole) continue;
       mask[i] = 1; queue[tail++] = i;
-      const onRim = rim > 0 && (s.shape === "circle" ? r >= radius - rim : Math.abs(dx) >= hx - rim || Math.abs(dy) >= hy - rim);
+      const onRim = rim > 0 && (s.shape === "circle" ? r >= radius - rim : corner > 0 ? sd >= -rim : Math.abs(dx) >= hx - rim || Math.abs(dy) >= hy - rim);
       // der Rand läuft hinter dem Motiv durch: wo das Motiv liegt, bleibt dessen Relief
       if (onRim && !sub[i]) hm.heights[i] = top;
     }
@@ -483,6 +503,9 @@ export function applyShape(hm: HeightMap, s: HeightSettings, renderDigits?: Digi
   const cx = (w - 1) / 2, cy = (h - 1) / 2;
   const top = quantize(maxZ(hm) + s.raise_mm, hm.base_layer_mm, hm.layer_height_mm);
   const radius = s.shape === "circle" ? (Math.min(w - 1, h - 1) * ps) / 2 : null;
+  // runde Ecken (Rechteck, Quadrat): Umriss und Rand folgen dem Abstand zur Außenkante
+  const hxm = ((w - 1) * ps) / 2, hym = ((h - 1) * ps) / 2;
+  const corner = radius === null ? Math.min(Math.max(0, s.corner_mm ?? 0), hxm, hym) : 0;
   const mask = new Uint8Array(w * h).fill(1);
   let anyCut = false;
   const rimPx = Math.max(1, Math.round(s.rim_mm / ps));
@@ -491,9 +514,12 @@ export function applyShape(hm: HeightMap, s: HeightSettings, renderDigits?: Digi
       const i = y * w + x;
       const r = Math.hypot((x - cx) * ps, (y - cy) * ps);
       if (radius !== null && r > radius) { mask[i] = 0; anyCut = true; continue; }
+      const sd = corner > 0 ? roundBox((x - cx) * ps, (y - cy) * ps, hxm, hym, corner) : 0;
+      if (sd > 1e-6) { mask[i] = 0; anyCut = true; continue; }
       if (s.hole_mm > 0 && r < s.hole_mm / 2) { mask[i] = 0; anyCut = true; continue; }
       if (s.rim_mm > 0) {
         const onRim = radius !== null ? r >= radius - s.rim_mm
+          : corner > 0 ? sd >= -s.rim_mm
           : x < rimPx || y < rimPx || x >= w - rimPx || y >= h - rimPx;
         if (onRim) hm.heights[i] = top;
       }
@@ -513,6 +539,76 @@ export function applyShape(hm: HeightMap, s: HeightSettings, renderDigits?: Digi
     for (let i = 0; i < w * h; i++) if (!mask[i]) hm.heights[i] = 0;
     hm.mask = mask;
   }
+}
+
+/** Abstand zum Rand eines Rechtecks mit runden Ecken um den Ursprung (negativ = innen). hx, hy: halbe Seiten. */
+export function roundBox(dx: number, dy: number, hx: number, hy: number, r: number): number {
+  const qx = Math.abs(dx) - hx + r, qy = Math.abs(dy) - hy + r;
+  return Math.min(Math.max(qx, qy), 0) + Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - r;
+}
+
+export interface FeetInfo {
+  /** Zahl der Aussparungen und ihre Mittelpunkte in mm ab der Mitte (x nach rechts, y nach unten) */
+  count: number;
+  centers: [number, number][];
+  /** gewünschte und tatsächliche Tiefe in mm (0 = zu dünn für eine Aussparung) */
+  wanted: number;
+  depth: number;
+  /** dünnste Stelle des Reliefs über den Aussparungen in mm */
+  thin: number;
+}
+/** So viel Material bleibt über einer Aussparung mindestens stehen (mm) */
+export const FEET_KEEP_MM = 0.6;
+/** Abstand der Aussparungen vom Rand der Form bzw. vom erhöhten Rand (mm) */
+export const FEET_MARGIN_MM = 2;
+
+/** Mittelpunkte der Aussparungen für Füße: so weit außen wie möglich, bei drei Füßen einer oben, bei vieren in
+ *  den Ecken. Koordinaten in mm ab der Mitte, y nach unten. */
+export function feetCenters(s: HeightSettings, wMm: number, hMm: number): [number, number][] {
+  const n = Math.round(s.feet ?? 0);
+  if (n !== 3 && n !== 4) return [];
+  const hx = wMm / 2, hy = hMm / 2, corner = Math.min(Math.max(0, s.corner_mm ?? 0), hx, hy);
+  const sd = (x: number, y: number) => (s.shape === "circle" ? Math.hypot(x, y) - Math.min(hx, hy) : roundBox(x, y, hx, hy, corner));
+  const need = Math.max(0, s.rim_mm) + s.feet_mm / 2 + FEET_MARGIN_MM, inner = s.hole_mm / 2 + s.feet_mm / 2 + 1;
+  const out: [number, number][] = [];
+  for (const deg of n === 4 ? [45, 135, 225, 315] : [90, 210, 330]) {
+    const a = (deg * Math.PI) / 180, ux = Math.cos(a), uy = -Math.sin(a);
+    for (let t = Math.hypot(hx, hy); t >= inner; t -= 0.05)
+      if (sd(ux * t, uy * t) <= -need) { out.push([ux * t, uy * t]); break; }
+  }
+  return out.length === n ? out : [];
+}
+
+/** Aussparungen für Füße in die Unterseite schneiden. Alle bekommen dieselbe Tiefe, damit der Untersetzer nicht
+ *  kippelt: höchstens die gewünschte, und so, dass überall mindestens FEET_KEEP_MM Material stehen bleibt. Die
+ *  Tiefe endet auf einer Schichtgrenze. */
+export function applyFeet(hm: HeightMap, s: HeightSettings): void {
+  hm.feet = null;
+  if (!(s.feet >= 3) || !(s.feet_mm > 0) || !(s.feet_depth_mm > 0)) return;
+  const { width: w, height: h, pixel_size_mm: ps } = hm, cx = (w - 1) / 2, cy = (h - 1) / 2;
+  const centers = feetCenters(s, (w - 1) * ps, (h - 1) * ps), rad = s.feet_mm / 2;
+  if (!centers.length) { hm.feet = { count: 0, centers, wanted: s.feet_depth_mm, depth: 0, thin: 0 }; return; }
+  const cells: number[] = [];
+  let thin = Infinity;
+  for (const [mx, my] of centers) {
+    const px = cx + mx / ps, py = cy + my / ps, rp = rad / ps;
+    for (let y = Math.max(0, Math.floor(py - rp - 1)); y <= Math.min(h - 1, Math.ceil(py + rp + 1)); y++)
+      for (let x = Math.max(0, Math.floor(px - rp - 1)); x <= Math.min(w - 1, Math.ceil(px + rp + 1)); x++) {
+        const i = y * w + x, d = Math.hypot(x - px, y - py);
+        if (hm.mask && !hm.mask[i]) continue;
+        // ein Punkt Abstand zählt für die Dicke mit: dort steigt die Unterseite zur Aussparung an
+        if (d <= rp + 1 && hm.heights[i] < thin) thin = hm.heights[i];
+        if (d <= rp) cells.push(i);
+      }
+  }
+  const room = Math.min(s.feet_depth_mm, thin - FEET_KEEP_MM), base = hm.base_layer_mm, step = hm.layer_height_mm;
+  const depth = room < base - 1e-6 ? 0 : base + Math.floor((room - base) / step + 1e-6) * step;
+  if (depth > 0) {
+    const bottom = hm.bottom ?? new Float32Array(w * h);
+    for (const i of cells) bottom[i] = Math.max(bottom[i], depth);
+    hm.bottom = bottom;
+  }
+  hm.feet = { count: centers.length, centers, wanted: s.feet_depth_mm, depth, thin: thin === Infinity ? 0 : thin };
 }
 
 /** Verkleinern durch Blockmittelung (für Vorschau/3D), danach wieder quantisiert. */

@@ -3,7 +3,7 @@
 import { srgbToLab } from "./color";
 import { gaussianBlur } from "./raster";
 import type { Filament } from "./filaments";
-import { layerIndex, quantize, type HeightMap, type HeightSettings } from "./heightmap";
+import { imagePlacement, layerIndex, quantize, type HeightMap, type HeightSettings } from "./heightmap";
 import { normalized, type ColorStop } from "./plan";
 
 export interface IslandSeed { x: number; y: number } // 0..1 im Originalbild
@@ -28,14 +28,10 @@ export function normalizeIsland(d: any): Island {
   };
 }
 
-/** Klickpunkt (Originalbild 0..1) -> Rasterpunkt der Höhenkarte (berücksichtigt runden Zuschnitt und Rahmen). */
+/** Klickpunkt (Originalbild 0..1) -> Rasterpunkt der Höhenkarte (berücksichtigt Ausschnitt, Motivgröße und Rahmen). */
 export function seedToGrid(seed: IslandSeed, imgW: number, imgH: number, s: HeightSettings, hm: HeightMap): [number, number] | null {
-  let u = seed.x, v = seed.y;
-  if (s.shape === "circle" && imgW !== imgH) {
-    const side = Math.min(imgW, imgH);
-    const ox = Math.floor((imgW - side) / 2), oy = Math.floor((imgH - side) / 2);
-    u = (u * imgW - ox) / side; v = (v * imgH - oy) / side;
-  }
+  const p = imagePlacement(imgW, imgH, s);
+  const u = p.ax * seed.x * imgW + p.bx, v = p.ay * seed.y * imgH + p.by;
   if (u < 0 || v < 0 || u > 1 || v > 1) return null;
   const b = hm.border_px, w = hm.width - 2 * b, h = hm.height - 2 * b;
   return [b + Math.round(u * (w - 1)), b + Math.round(v * (h - 1))];

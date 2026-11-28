@@ -8,6 +8,7 @@ import {
   SLICER_TARGETS, filamentKey, planSlots, type ThreeMfInfo,
   NIGHT_AUTO_MAX, pickNightFilament, resize, type NightFilament, type NightLight,
   LENTI_LAYER_MM, lentiLightest, lentiPureAngle, lentiThrough, lentiView, ordered, type LentiModel, type LentiPrint,
+  FEET_KEEP_MM, edgeColor, imagePlacement, shiftThickness,
 } from "./core";
 import * as compute from "./compute";
 import type { NightResult, PreviewResult } from "./compute";
@@ -108,6 +109,7 @@ function setSetting<K extends keyof HeightSettings>(k: K, v: HeightSettings[K]) 
   markDirty();
   if (k === "height_mode") syncMode();
   if (k === "shape" || k === "clock_numbers" || k === "breakout") syncShapeFields();
+  if (k === "max_height_mm") thickField.set(v as number);
   schedule();
 }
 let breakoutHint: HTMLElement;
@@ -166,12 +168,13 @@ const left = h("aside", { class: "left" },
     sl("border_mm", "Rahmenbreite", 0, 20, 0.5, "mm", "Glatter Rahmen rund ums Bild. 0 = kein Rahmen.", 1),
     sl("border_height_mm", "Rahmenhöhe (0 = max.)", 0, 10, 0.08, "mm", "Höhe des Rahmens. 0 = so hoch wie die höchste Stelle des Bildes.")),
   section("Form", true,
-    (fields.shape = selectField("Umriss", SHAPES, (v) => setSetting("shape", v as any), "Rund schneidet das Bild auf den größten Kreis in der Mitte zu, z. B. für Uhren.")).el,
+    (fields.shape = selectField("Umriss", SHAPES, (v) => setSetting("shape", v as any), "Rund und Quadrat zeigen einen Ausschnitt des Bildes, z. B. für Uhren oder Untersetzer. Welchen, wählst du mit „Ausschnitt“ über der Vorschau.")).el,
+    sl("corner_mm", "Eckenradius", 0, 30, 0.5, "mm", "Rundet die Ecken von Rechteck und Quadrat ab. 0 = spitze Ecken.", 1),
     sl("hole_mm", "Mittelloch Ø", 0, 20, 0.5, "mm", "Loch in der Mitte, z. B. 8 mm für die Achse eines Uhrwerks. 0 = kein Loch.", 1),
     sl("rim_mm", "Erhöhter Rand", 0, 15, 0.5, "mm", "Außenrand, der über dem Bild steht und in der obersten Farbe gedruckt wird.", 1),
-    sl("image_scale", "Motivgröße", 0.2, 2, 0.01, "×", "Verkleinert oder vergrößert nur das Motiv. Umriss und Größe des Drucks bleiben gleich, z. B. damit bei einer Uhr Platz für die Ziffern bleibt. Die freie Fläche bekommt die Randfarbe des Bildes."),
-    sl("image_x", "Motiv nach rechts", -50, 50, 0.5, "%", "Verschiebt das Motiv waagerecht innerhalb der Form.", 1),
-    sl("image_y", "Motiv nach unten", -50, 50, 0.5, "%", "Verschiebt das Motiv senkrecht innerhalb der Form.", 1),
+    sl("image_scale", "Motivgröße", 0.2, 5, 0.01, "×", "Verkleinert oder vergrößert nur das Motiv. Umriss und Größe des Drucks bleiben gleich: Größer zeigt einen Ausschnitt des Bildes, kleiner lässt Platz, z. B. für die Ziffern einer Uhr. Die freie Fläche bekommt die Randfarbe des Bildes. Mit „Ausschnitt“ über der Vorschau geht es auch mit dem Mausrad."),
+    sl("image_x", "Motiv nach rechts", -150, 150, 0.5, "%", "Verschiebt das Bild waagerecht auf der Form. Mit „Ausschnitt“ über der Vorschau lässt es sich direkt ziehen.", 1),
+    sl("image_y", "Motiv nach unten", -150, 150, 0.5, "%", "Verschiebt das Bild senkrecht auf der Form. Mit „Ausschnitt“ über der Vorschau lässt es sich direkt ziehen.", 1),
     (fields.breakout = selectField("Motiv ragt über die Form", BREAKOUTS, (v) => setSetting("breakout", v as any),
       "Die Form wird kleiner als das Bild, und das Motiv darf darüber hinausragen (z. B. Ohren über den Kreis). Aufliegend: die überstehenden Teile bekommen eine eigene Grundplatte, druckbar ohne Stützen. Schwebend: unter den überstehenden Teilen ist Luft, im Slicer Stützen einschalten. Braucht ein Motiv vor einfarbigem oder transparentem Hintergrund.")).el,
     sl("breakout_frame", "Formgröße", 30, 100, 1, "%", "Größe der Form im Verhältnis zum Bild. Was vom Motiv darüber hinausgeht, ragt heraus.", 0),
@@ -213,6 +216,47 @@ const islandPanel = new IslandPanel({
   changed: () => { markDirty(); schedule(); },
 });
 left.append(section("Farbinseln", false, islandPanel.el));
+
+// ------------------------------------------------------------------ Untersetzer
+/** So dick ist ein eingerichteter Untersetzer an der dünnsten Stelle mindestens */
+const COASTER_MIN_MM = 1.6;
+/** Richtet Form, Größe und Dicke für einen Untersetzer ein; der Bildausschnitt bleibt, wie er ist. */
+function coasterPreset(shape: "circle" | "square") {
+  if (!state.image) { toast("Bitte zuerst ein Bild öffnen."); return; }
+  const s = state.settings;
+  Object.assign(s, { shape, width_mm: 100, corner_mm: shape === "square" ? 10 : 0, rim_mm: 2, hole_mm: 0, clock_numbers: false, breakout: "off", border_mm: 0 });
+  // stabil genug für den Tisch: Die dünnste Stelle wird mindestens COASTER_MIN_MM dick (das Bild bleibt gleich)
+  if (s.min_height_mm < COASTER_MIN_MM - 1e-6) shiftThickness(s, state.stops, s.max_height_mm + COASTER_MIN_MM - s.min_height_mm);
+  syncFields(); stack.render(); markDirty(); schedule(0);
+  setCrop(true); showTab(0);
+  toast("Untersetzer eingerichtet. Zieh jetzt das Bild in der Vorschau an die passende Stelle, das Mausrad ändert die Größe.", "ok");
+}
+/** Dicke: verschiebt Relief und Wechsel gemeinsam, das Bild bleibt gleich (siehe shiftThickness) */
+const thickField = sliderField("Dicke", 0.6, 8, 0.04, "mm", (v) => {
+  const d = shiftThickness(state.settings, state.stops, v);
+  thickField.set(state.settings.max_height_mm);
+  if (!d) return;
+  syncFields(); stack.render(); markDirty(); schedule(0);
+}, "Dicke an der höchsten Stelle des Bildes, ohne den erhöhten Rand. Das Bild bleibt dabei gleich: Es wandert mit allen Farbwechseln nach oben oder unten, nur das unterste Filament wird dicker oder dünner. Ein dickerer Untersetzer ist stabiler und lässt Platz für Füße, druckt aber länger.");
+const feetField = selectField("Füße", { 0: "Keine", 3: "3 Aussparungen", 4: "4 Aussparungen" }, (v) => { setSetting("feet", Number(v)); syncShapeFields(); },
+  "Runde Aussparungen in der Unterseite, in die selbstklebende Gummifüße oder Filzgleiter passen. Sie sitzen so weit außen wie möglich.");
+fields.feet = { el: feetField.el, set: (v: number) => feetField.set(String(v ?? 0)), setDefault: (v: number) => feetField.setDefault(String(v ?? 0)) };
+const coasterInfo = h("div", { class: "night-info" });
+const coasterSection = section("Untersetzer", false,
+  h("p", { class: "hint", style: { margin: "0 0 8px" } }, "Untersetzer für Tassen und Gläser: Form einrichten, dann mit „Ausschnitt“ über der Vorschau das Bild an die passende Stelle ziehen."),
+  h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginBottom: "10px" } },
+    button("Rund einrichten", () => coasterPreset("circle"), { cls: "wide", title: "Stellt ein: runder Umriss, 100 mm Durchmesser, 2 mm erhöhter Rand gegen Tropfen, überall mindestens 1,6 mm dick. Alles lässt sich danach hier und unter „Größe“ und „Form“ ändern." }),
+    button("Eckig einrichten", () => coasterPreset("square"), { cls: "wide", title: "Stellt ein: Quadrat mit runden Ecken, 100 mm Seitenlänge, 2 mm erhöhter Rand gegen Tropfen, überall mindestens 1,6 mm dick. Alles lässt sich danach hier und unter „Größe“ und „Form“ ändern." })),
+  thickField.el,
+  feetField.el,
+  sl("feet_mm", "Durchmesser der Füße", 5, 25, 0.5, "mm", "Durchmesser der Aussparungen. Etwa 0,5 mm größer wählen als die Füße, die hinein sollen.", 1),
+  sl("feet_depth_mm", "Tiefe der Aussparungen", 0.2, 3, 0.1, "mm", "So tief sitzen die Füße im Untersetzer. Sie sollten etwas herausstehen: Die Tiefe also kleiner wählen, als die Füße hoch sind. Über jeder Aussparung bleiben mindestens 0,6 mm Material stehen.", 1),
+  coasterInfo,
+  h("p", { class: "hint", style: { margin: "8px 0 0" } }, "Für heiße Tassen besser PETG drucken: PLA wird ab etwa 55 °C weich. Ein flaches Relief (wenig Abstand zwischen minimaler und maximaler Höhe) lässt Gläser ruhiger stehen."));
+coasterSection.dataset.mode = "relief";
+// die ersten beiden Abschnitte sind „Größe“ und „Form“ (nicht über den Titel suchen: Der ist in der englischen Oberfläche übersetzt)
+const [sizeSection, shapeSection] = [...left.querySelectorAll<HTMLDetailsElement>("details.section")];
+shapeSection.after(coasterSection);
 
 // ------------------------------------------------------------------ Tag-und-Nacht-Bild
 /** Filament der Rückplatte (gilt für neue Projekte; ein Projekt bringt sein eigenes mit) und welche Seite die Vorschau zeigt */
@@ -359,6 +403,7 @@ left.prepend(kindPill, lithoSection, lentiSection);
 function syncLitho() {
   const kind = kindOf(), on = kind === "litho", form = state.settings.litho_form;
   app.classList.toggle("litho", on); app.classList.toggle("lenti", kind === "lenti");
+  if (kind !== "relief" && cropOn) setCrop(false);
   for (const [k, b] of kindBtns) b.classList.toggle("active", k === kind);
   lithoFilBtn.replaceChildren(h("div", { class: "swatch", style: { background: lithoView.filament.color } }), `${lithoView.filament.name} · TD ${lithoView.filament.td.toFixed(1)}`);
   const show = (k: keyof HeightSettings, vis: boolean) => { const el = fields[k]?.el; if (el) el.style.display = vis ? "" : "none"; };
@@ -400,7 +445,6 @@ function applyCut() {
 cutRange.addEventListener("input", applyCut);
 view3d.el.append(h("div", { class: "zbar" }, h("span", { class: "hint" }, "Schicht"), cutRange, cutLabel, h("div", { class: "sep" }), h("span", { class: "hint" }, "Höhe überhöhen"), zRange, zLabel),
   h("div", { class: "overlay-hint", style: { bottom: "auto", top: "12px" } }, "Ziehen = drehen · Rechts ziehen = verschieben · Rad = zoomen"));
-viewPreview.el.append(h("div", { class: "overlay-hint" }, "Rad = zoomen · Ziehen = verschieben · Doppelklick = einpassen"));
 const busy = h("div", { class: "busy" }, h("div", { class: "spinner" }), "Berechne …");
 // Startbildschirm: Bild öffnen oder eines der mitgelieferten Beispiele laden
 const exampleCard = (ex: Example) => h("button", { class: "example", title: ex.litho ? "Als Lithophanie öffnen" : "Als Farbrelief öffnen", onclick: () => loadExample(ex) },
@@ -432,7 +476,76 @@ const dayNightBtns = ([[false, "Tag"], [true, "Nacht"]] as const).map(([v, label
   [v, h("button", { onclick: () => { nightView.show = v; syncNight(); showPreview(); updateCompare(); } }, label)] as const);
 const dayNightPill = h("div", { class: "mode-pill day-night", title: "Tag: das Farbrelief bei Licht von vorn. Nacht: Farbrelief und Rückplatte mit Licht von hinten. Die Helligkeit ist dabei wie von einer Kamera an die hellste Stelle angepasst." },
   ...dayNightBtns.map(([, b]) => b));
-viewPreview.el.append(h("div", { class: "view-tools" }, compareBtn, dayNightPill));
+// Ausschnitt wählen: das Bild direkt in der Vorschau ziehen (verschieben) und mit dem Mausrad größer oder kleiner machen
+let cropOn = false;
+const cropBtn = button("Ausschnitt", () => setCrop(!cropOn),
+  { icon: "move", cls: "small", title: "Bildausschnitt wählen: Solange der Knopf an ist, verschiebt Ziehen das Bild auf der Form, das Mausrad macht es größer oder kleiner, ein Doppelklick setzt beides zurück." });
+const previewHint = h("div", { class: "overlay-hint" }, "Rad = zoomen · Ziehen = verschieben · Doppelklick = einpassen");
+viewPreview.el.append(previewHint);
+/** Bild (Original) so auf eine Fläche der Größe iw × ih zeichnen, wie es auf der Form liegt */
+function drawPlaced(g: CanvasRenderingContext2D, img: Raster, x0: number, y0: number, iw: number, ih: number) {
+  const p = imagePlacement(img.width, img.height, state.settings);
+  g.save(); g.beginPath(); g.rect(x0, y0, iw, ih); g.clip();
+  g.imageSmoothingQuality = "high";
+  g.drawImage(rasterCanvas(img), x0 + p.bx * iw, y0 + p.by * ih, p.ax * img.width * iw, p.ay * img.height * ih);
+  g.restore();
+}
+/** Während des Ziehens liegt das Original am neuen Platz über der Vorschau: sofort sichtbar, die Berechnung folgt */
+let cropSrc: HTMLCanvasElement | null = null, cropFill = "", cropStart = { x: 0, y: 0 }, cropTimer = 0;
+function cropOverlay() {
+  const r = state.result, img = state.image;
+  if (!r || !img) return;
+  const c = h("canvas", { width: r.width, height: r.height }), g = c.getContext("2d")!;
+  const b = r.border, iw = r.width - 2 * b, ih = r.height - 2 * b, s = state.settings;
+  // Umriss der Form: außerhalb bleibt die Vorschau sichtbar
+  g.beginPath();
+  if (s.shape === "circle") g.arc(b + iw / 2, b + ih / 2, Math.min(iw, ih) / 2, 0, Math.PI * 2);
+  else g.roundRect(b, b, iw, ih, Math.min((Math.max(0, s.corner_mm) / s.width_mm) * iw, iw / 2, ih / 2));
+  g.clip();
+  // wo das Bild die Form nicht bedeckt, füllt die Berechnung mit der mittleren Randfarbe des Bildes
+  if (!cropSrc) { cropSrc = rasterCanvas(img); const e = edgeColor(img); cropFill = e ? `rgb(${e.map((v) => Math.round(v * 255)).join(",")})` : "#2b2b2b"; }
+  g.fillStyle = cropFill; g.fillRect(0, 0, r.width, r.height);
+  const p = imagePlacement(img.width, img.height, s);
+  g.imageSmoothingQuality = "medium";
+  g.drawImage(cropSrc, b + p.bx * iw, b + p.by * ih, p.ax * img.width * iw, p.ay * img.height * ih);
+  viewPreview.setOverlay(c);
+}
+const clampTo = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+function cropChanged(delay: number) {
+  fields.image_x!.set(state.settings.image_x); fields.image_y!.set(state.settings.image_y); fields.image_scale!.set(state.settings.image_scale);
+  cropOverlay(); markDirty();
+  clearTimeout(cropTimer); cropTimer = window.setTimeout(() => schedule(0), delay);
+}
+function setCrop(on: boolean) {
+  cropOn = on && kindOf() === "relief";
+  cropBtn.classList.toggle("on", cropOn);
+  viewPreview.el.classList.toggle("cropping", cropOn);
+  previewHint.textContent = cropOn ? "Ziehen = Bild verschieben · Rad = Bild größer oder kleiner · Doppelklick = zurücksetzen" : "Rad = zoomen · Ziehen = verschieben · Doppelklick = einpassen";
+  if (!cropOn) { viewPreview.grab = null; viewPreview.setOverlay(null); return; }
+  if (nightView.show) { nightView.show = false; syncNight(); showPreview(); updateCompare(); }
+  viewPreview.grab = {
+    start: () => { cropStart = { x: state.settings.image_x, y: state.settings.image_y }; clearTimeout(cropTimer); },
+    move: (dx, dy) => {
+      const r = state.result;
+      if (!r) return;
+      const iw = r.width - 2 * r.border, ih = r.height - 2 * r.border;
+      state.settings.image_x = clampTo(Math.round((cropStart.x + (dx / iw) * 100) * 2) / 2, -150, 150);
+      state.settings.image_y = clampTo(Math.round((cropStart.y + (dy / ih) * 100) * 2) / 2, -150, 150);
+      cropChanged(1e9);
+    },
+    end: () => { clearTimeout(cropTimer); schedule(0); },
+    zoom: (f) => {
+      // um die Mitte der Form: Der Punkt des Bildes, der dort liegt, bleibt dort
+      const s = state.settings, old = s.image_scale, next = clampTo(Math.round(old * f * 100) / 100, 0.2, 5);
+      if (next === old) return;
+      s.image_scale = next;
+      s.image_x = clampTo(Math.round(s.image_x * (next / old) * 2) / 2, -150, 150); s.image_y = clampTo(Math.round(s.image_y * (next / old) * 2) / 2, -150, 150);
+      cropChanged(260);
+    },
+    reset: () => { Object.assign(state.settings, { image_scale: 1, image_x: 0, image_y: 0 }); cropChanged(0); },
+  };
+}
+viewPreview.el.append(h("div", { class: "view-tools" }, compareBtn, cropBtn, dayNightPill));
 // Lentikularbild: Blickwinkel der Vorschau (Regler links = Betrachter steht links)
 let lentiSide = Math.max(-70, Math.min(70, Number(store.get("lentiSide", -50)) || 0));
 const sideLabel = h("span", { style: { minWidth: "120px" } });
@@ -485,19 +598,11 @@ function updateCompare() {
     viewPreview.setCompare(c);
     return;
   }
-  // Original auf das Raster der Vorschau legen (runder Zuschnitt und Rahmen wie im Modell)
-  const src = rasterCanvas(img);
+  // Original auf das Raster der Vorschau legen (Ausschnitt und Rahmen wie im Modell)
   const c = h("canvas", { width: r.width, height: r.height });
   const g = c.getContext("2d")!;
   g.fillStyle = "#2b2b2b"; g.fillRect(0, 0, r.width, r.height);
-  let sx = 0, sy = 0, sw = img.width, sh = img.height;
-  if (state.settings.shape === "circle" && sw !== sh) { const side = Math.min(sw, sh); sx = Math.floor((sw - side) / 2); sy = Math.floor((sh - side) / 2); sw = sh = side; }
-  g.imageSmoothingQuality = "high";
-  const iw = r.width - 2 * r.border, ih = r.height - 2 * r.border, sc = state.settings.image_scale ?? 1;
-  const dw = iw * sc, dh = ih * sc;
-  g.save(); g.beginPath(); g.rect(r.border, r.border, iw, ih); g.clip();
-  g.drawImage(src, sx, sy, sw, sh, r.border + (iw - dw) / 2 + ((state.settings.image_x ?? 0) / 100) * iw, r.border + (ih - dh) / 2 + ((state.settings.image_y ?? 0) / 100) * ih, dw, dh);
-  g.restore();
+  drawPlaced(g, img, r.border, r.border, r.width - 2 * r.border, r.height - 2 * r.border);
   viewPreview.setCompare(c);
 }
 
@@ -549,7 +654,11 @@ function goStep(i: number) {
   step = i; renderSteps();
   const sections = [...left.querySelectorAll("details")] as HTMLDetailsElement[];
   if (i === 0) { if (!state.image) openImage(); else showTab(1); }
-  if (i === 1) { sections.forEach((d, k) => (d.open = k < 2 || d === lentiSection)); left.scrollTop = 0; flash(left); showTab(0); }
+  if (i === 1) {
+    const kind = kindOf(), open = [sizeSection, kind === "litho" ? lithoSection : kind === "lenti" ? lentiSection : shapeSection];
+    sections.forEach((d) => (d.open = open.includes(d)));
+    left.scrollTop = 0; flash(left); showTab(0);
+  }
   if (i === 2) { if (state.settings.litho) { lithoSection.open = true; left.scrollTop = 0; flash(lithoSection); } else flash(stack.el); showTab(0); }
   if (i === 3) { showTab(0); if (!compareOn) { compareOn = true; store.set("compare", true); } updateCompare(); }
   if (i === 4) exportAll();
@@ -623,6 +732,7 @@ for (const [k, f] of Object.entries(fields)) f!.setDefault((DEFAULT_SETTINGS as 
 lithoIntensity.setDefault(1);
 function syncFields() {
   for (const [k, f] of Object.entries(fields)) f!.set((state.settings as any)[k]);
+  thickField.set(state.settings.max_height_mm);
   syncMode(); syncShapeFields(); syncLitho(); syncNight(); renderSteps();
 }
 function syncMode(effective?: string) {
@@ -642,6 +752,27 @@ function syncShapeFields() {
   fields.breakout_float_mm!.el.style.display = breakoutHint.style.display = bo === "floating" ? "" : "none";
   fields.numbers_mm!.el.style.display = state.settings.clock_numbers ? "" : "none";
   fields.clock_numbers!.el.title = round ? "" : "Ziffern werden auf dem größten Kreis im Bild verteilt.";
+  fields.corner_mm!.el.style.display = round ? "none" : "";
+  fields.feet_mm!.el.style.display = fields.feet_depth_mm!.el.style.display = state.settings.feet ? "" : "none";
+}
+/** Kennzahlen und Hinweise zum Untersetzer: Größe, Dicke und was aus den Aussparungen für die Füße wird */
+function renderCoasterInfo() {
+  clear(coasterInfo);
+  const r = state.result, s = state.settings;
+  if (!r) return;
+  const line = (text: string, warn = false) => coasterInfo.append(h("p", { class: "hint" + (warn ? " warn" : "") }, text));
+  const thin = layerTopZ(r.minLayer, s.base_layer_mm, s.layer_height_mm);
+  line(s.rim_mm > 0 ? `${num(r.size[0], 0)} × ${num(r.size[1], 0)} mm, ${num(thin, 2)} bis ${num(r.maxZ, 2)} mm dick, der erhöhte Rand mitgerechnet.`
+    : `${num(r.size[0], 0)} × ${num(r.size[1], 0)} mm, ${num(thin, 2)} bis ${num(r.maxZ, 2)} mm dick.`);
+  const f = r.feet;
+  if (!s.feet || !f) return;
+  if (s.breakout !== "off") { line("Mit einem Motiv, das über die Form ragt, gibt es keine Aussparungen für Füße.", true); return; }
+  if (!f.count) { line("Für die Füße ist die Form zu klein. Abhilfe: kleinere Füße wählen oder den Untersetzer größer machen.", true); return; }
+  // so dick müsste die höchste Stelle sein, damit die gewünschte Tiefe Platz hat
+  const need = Math.ceil((s.max_height_mm + f.wanted + FEET_KEEP_MM - f.thin) / s.layer_height_mm - 1e-6) * s.layer_height_mm;
+  if (!f.depth) line(`Für Aussparungen ist der Untersetzer zu dünn: Dort ist er nur ${num(f.thin, 2)} mm dick, und ${num(FEET_KEEP_MM, 1)} mm bleiben stehen. Abhilfe: „Dicke“ auf mindestens ${num(need, 2)} mm stellen.`, true);
+  else if (f.depth < f.wanted - 0.05) line(`Die ${f.count} Aussparungen werden nur ${num(f.depth, 2)} mm tief statt ${num(f.wanted, 1)} mm: Der Untersetzer ist dort ${num(f.thin, 2)} mm dick, und ${num(FEET_KEEP_MM, 1)} mm bleiben stehen. Abhilfe: „Dicke“ auf mindestens ${num(need, 2)} mm stellen.`, true);
+  else line(`${f.count} Aussparungen mit ${num(s.feet_mm, 1)} mm Durchmesser, ${num(f.depth, 2)} mm tief. In der 3D-Ansicht sind sie von unten zu sehen.`);
 }
 // ------------------------------------------------------------------ Rückgängig / Wiederholen
 const hist = { stack: [] as string[], pos: -1, timer: 0, restoring: false };
@@ -738,7 +869,8 @@ async function rebuild() {
     state.previewRgba = new Uint8ClampedArray(r.preview); previewDim = [r.width, r.height];
     state.nightRgba = r.night ? new Uint8ClampedArray(r.night.preview) : null;
     showPreview();
-    renderNightInfo();
+    viewPreview.setOverlay(null);
+    renderNightInfo(); renderCoasterInfo();
     cutRange.max = String(r.layerCount);
     if (cutFull || Number(cutRange.value) > r.layerCount) cutRange.value = String(r.layerCount);
     view3d.setMesh(r.mesh);
@@ -1038,7 +1170,7 @@ function showAssistant() {
 
 // ------------------------------------------------------------------ Dateien
 async function setImage(img: Raster, png: Uint8Array | null) {
-  state.image = img;
+  state.image = img; cropSrc = null;
   state.imagePng = png ?? (await rgbaToPng(toRGBA8(img), img.width, img.height));
   viewOriginal.set(toRGBA8(img), img.width, img.height);
   const { palette } = await compute.setImage(img);
@@ -1289,6 +1421,8 @@ async function exportAll() {
       h("ul", { style: { paddingLeft: "18px", lineHeight: "1.7" } }, ...files.map((f) => h("li", null, f.split(/[\\/]/).pop()!))),
       h("p", { class: "hint" }, `STL ${(stl.length / 1e6).toFixed(1)} MB, 3MF ${(r.threemf.byteLength / 1e6).toFixed(1)} MB.`),
       ...slicerNotes(r.threemfInfo),
+      ...(r.feet && r.feet.depth > 0 ? [h("p", { class: "hint" }, h("b", null, "Füße: "),
+        `Die Unterseite hat ${r.feet.count} Aussparungen mit ${num(state.settings.feet_mm, 1)} mm Durchmesser, ${num(r.feet.depth, 2)} mm tief. Der Drucker überbrückt sie ohne Stützen. Nach dem Druck Gummifüße oder Filzgleiter einkleben.`)] : []),
       ...(night ? [h("p", { class: "hint" }, h("b", null, "Tag-und-Nacht-Bild: "),
         h("span", { "data-notr": true }, tr("„{}“ ist die Rückplatte.").replace("{}", nightFile) + " "),
         `Sie ist ${num(night.info.min, 2)} bis ${num(night.info.max, 1)} mm dick und wiegt etwa ${num((night.volume_mm3 / 1000) * 1.24, 0)} g.`, " ",

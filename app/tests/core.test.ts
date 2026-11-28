@@ -1149,3 +1149,144 @@ describe("Lentikularbild", () => {
     expect([old.settings.lenti, old.settings.lenti_pitch_mm, old.settings.lenti_height_mm, old.settings.lenti_base_mm, old.settings.lenti_skin_mm]).toEqual([false, 2, 1, 0.6, 0.4]);
   });
 });
+
+import { FEET_KEEP_MM, applyFeet, feetCenters, imagePlacement, prepareImage, roundBox, seedToGrid, shiftThickness } from "../src/core";
+import { resize } from "../src/core/raster";
+
+describe("Untersetzer: Ausschnitt, runde Ecken, Füße, Dicke", () => {
+  /** Querformat 90 × 30: links rot, Mitte grün, rechts blau */
+  const thirds = (): Raster => {
+    const w = 90, h = 30, data = new Float32Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) { data[i * 4 + Math.min(2, Math.floor((i % w) / 30))] = 1; data[i * 4 + 3] = 1; }
+    return { width: w, height: h, data };
+  };
+  const at = (p: { w: number; rgb: Float32Array }, x: number, y: number) => [0, 1, 2].map((c) => Math.round(p.rgb[(y * p.w + x) * 3 + c] * 100) / 100);
+  const C = (o: Partial<HeightSettings> = {}) => S({ shape: "circle", width_mm: 15, ...o });
+
+  it("Ausschnitt: Das ganze Bild lässt sich über die Form schieben", () => {
+    // ohne Versatz liegt die Mitte des Bildes auf der runden Form, wie bisher
+    const mid = prepareImage(thirds(), C());
+    expect([mid.w, mid.h]).toEqual([31, 31]);
+    expect(at(mid, 2, 15)).toEqual([0, 1, 0]); expect(at(mid, 28, 15)).toEqual([0, 1, 0]);
+    // nach rechts geschoben erscheint der linke Teil des Bildes (nicht die Randfarbe), nach links der rechte
+    const left = prepareImage(thirds(), C({ image_x: 100 })), right = prepareImage(thirds(), C({ image_x: -100 }));
+    expect(at(left, 2, 15)).toEqual([1, 0, 0]); expect(at(left, 28, 15)).toEqual([1, 0, 0]);
+    expect(at(right, 15, 15)).toEqual([0, 0, 1]);
+    const half = prepareImage(thirds(), C({ image_x: 50 }));
+    expect(at(half, 5, 15)).toEqual([1, 0, 0]); expect(at(half, 25, 15)).toEqual([0, 1, 0]);
+    // verkleinert passt das ganze Querformat in die Form; darüber und darunter steht die Randfarbe des Bildes
+    const small = prepareImage(thirds(), C({ image_scale: 1 / 3 }));
+    expect(at(small, 3, 15)).toEqual([1, 0, 0]); expect(at(small, 15, 15)).toEqual([0, 1, 0]); expect(at(small, 27, 15)).toEqual([0, 0, 1]);
+    const edge = at(small, 15, 2);
+    expect(edge[0]).toBeGreaterThan(0.2); expect(edge[1]).toBeGreaterThan(0.2); expect(edge[2]).toBeGreaterThan(0.2);
+    expect(small.alpha[2 * small.w + 15]).toBe(1);
+    // vergrößert: nur die Bildmitte
+    expect(at(prepareImage(thirds(), C({ image_scale: 3 })), 1, 15)).toEqual([0, 1, 0]);
+    // ganz hinausgeschoben bleibt nur die Randfarbe
+    expect(at(prepareImage(thirds(), C({ image_x: 250 })), 15, 15)).toEqual(edge);
+    // Rechteck ohne Versatz: genau das verkleinerte Bild
+    const r = prepareImage(thirds(), S({ width_mm: 15 })), plain = resize(thirds(), r.w, r.h);
+    expect([r.w, r.h]).toEqual([31, 10]);
+    expect(Array.from(r.rgb.slice(0, 30))).toEqual(Array.from({ length: 30 }, (_, i) => plain.data[Math.floor(i / 3) * 4 + (i % 3)]));
+    // Abbildung von Bildpunkten auf die Form
+    const p = imagePlacement(90, 30, C({ image_x: 100 }));
+    expect(p.ax).toBeCloseTo(1 / 30, 9); expect(p.bx).toBeCloseTo(0, 9); expect(p.ay * 15 + p.by).toBeCloseTo(0.5, 9);
+    // Klickpunkte der Farbinseln folgen dem Ausschnitt
+    const hm = buildHeightmap(thirds(), C({ image_x: 100 }), { mode: "bright_high" });
+    expect(seedToGrid({ x: 1 / 6, y: 0.5 }, 90, 30, C({ image_x: 100 }), hm)).toEqual([15, 15]);
+    expect(seedToGrid({ x: 0.9, y: 0.5 }, 90, 30, C({ image_x: 100 }), hm)).toBeNull();
+    expect(seedToGrid({ x: 0.5, y: 0.5 }, 90, 30, C(), hm)).toEqual([15, 15]);
+  });
+
+  it("Quadrat mit runden Ecken: Umriss und Rand folgen der Rundung", () => {
+    const sq = buildHeightmap(thirds(), S({ shape: "square", width_mm: 30 }), { mode: "bright_high" });
+    expect([sq.width, sq.height]).toEqual([61, 61]);
+    expect(sq.mask).toBeNull();
+    const s = S({ shape: "square", width_mm: 30, corner_mm: 6, rim_mm: 2 });
+    const hm = buildHeightmap(thirds(), s, { mode: "bright_high" });
+    const m = (x: number, y: number) => hm.mask![y * 61 + x], z = (x: number, y: number) => hm.heights[y * 61 + x];
+    expect(m(0, 0)).toBe(0); expect(m(2, 2)).toBe(0); expect(m(4, 4)).toBe(1);
+    expect(m(30, 0)).toBe(1); expect(m(0, 30)).toBe(1); expect(m(60, 60)).toBe(0);
+    let area = 0; for (const v of hm.mask!) area += v;
+    // 30 × 30 mm abzüglich der vier Eckstücke (r² · (4 − π)), in Rasterpunkten von 0,25 mm²
+    expect(area / 4).toBeGreaterThan(900 - 36 * (4 - Math.PI) - 12); expect(area / 4).toBeLessThan(900 + 62 / 4 + 1);
+    // der Rand ist überall gleich breit, auch in der Rundung: 2 mm entlang der Diagonale der Ecke
+    const top = Math.max(...hm.heights);
+    expect(z(30, 1)).toBeCloseTo(top, 5); expect(z(30, 3)).toBeCloseTo(top, 5); expect(z(30, 6)).toBeLessThan(top);
+    expect(z(5, 5)).toBeCloseTo(top, 5); expect(z(9, 9)).toBeLessThan(top);
+    expect(watertight(heightmapToMesh(hm).faces)).toBe(true);
+    // Abstand zum Rand: außen positiv, innen negativ, in der Ecke über den Kreisbogen
+    expect(roundBox(0, 0, 15, 15, 6)).toBeCloseTo(-15, 9); expect(roundBox(15, 0, 15, 15, 6)).toBeCloseTo(0, 9);
+    expect(roundBox(15, 15, 15, 15, 6)).toBeCloseTo(Math.SQRT2 * 6 - 6, 9); expect(roundBox(17, 0, 15, 15, 0)).toBeCloseTo(2, 9);
+    // runde Ecken gehen auch beim Rechteck
+    const rc = buildHeightmap(thirds(), S({ width_mm: 45, corner_mm: 4 }), { mode: "bright_high" });
+    expect([rc.width, rc.height, rc.mask![0], rc.mask![45]]).toEqual([91, 30, 0, 1]);
+    // alte Projekte: kein Eckenradius, keine Füße
+    const old = parseProject(JSON.stringify({ format: "chromalith-project", version: 1, name: "alt", settings: { shape: "circle" }, plan: [], image_png: null }));
+    expect([old.settings.corner_mm, old.settings.feet, old.settings.feet_mm, old.settings.feet_depth_mm]).toEqual([0, 0, 10, 1]);
+  });
+
+  it("Füße: Aussparungen unten, überall gleich tief und nie durch das Relief", () => {
+    const flat: Raster = { width: 8, height: 8, data: new Float32Array(8 * 8 * 4).fill(1) };
+    const base = S({ shape: "circle", width_mm: 100, min_height_mm: 2.04, max_height_mm: 3 });
+    const none = buildHeightmap(flat, base, { mode: "dark_high" });
+    expect(none.feet ?? null).toBeNull(); expect(none.bottom ?? null).toBeNull();
+    const s3 = { ...base, feet: 3, feet_mm: 10, feet_depth_mm: 1 };
+    const hm = buildHeightmap(flat, s3, { mode: "dark_high" });
+    // 1 mm gewünscht: auf die Schichtgrenze darunter (0,2 + 10 × 0,08)
+    expect(hm.feet).toMatchObject({ count: 3, wanted: 1 }); expect(hm.feet!.depth).toBeCloseTo(1.0, 5); expect(hm.feet!.thin).toBeCloseTo(2.04, 5);
+    const c = feetCenters(s3, 100, 100);
+    expect(c.length).toBe(3);
+    // so weit außen wie möglich: 50 mm − halber Fuß − Abstand
+    for (const [x, y] of c) { expect(Math.hypot(x, y)).toBeGreaterThan(42.8); expect(Math.hypot(x, y)).toBeLessThanOrEqual(43.01); }
+    expect(c[0][0]).toBeCloseTo(0, 6); expect(c[0][1]).toBeLessThan(0);
+    const bz = (mx: number, my: number) => hm.bottom![Math.round(100 + my / 0.5) * 201 + Math.round(100 + mx / 0.5)];
+    expect(bz(c[0][0], c[0][1])).toBeCloseTo(1.0, 5); expect(bz(c[1][0], c[1][1])).toBeCloseTo(1.0, 5); expect(bz(0, 0)).toBe(0);
+    const mesh = heightmapToMesh(hm), full = heightmapToMesh(none);
+    expect(watertight(mesh.faces)).toBe(true);
+    const lost = meshVolume(full) - meshVolume(mesh);
+    expect(lost).toBeGreaterThan(3 * Math.PI * 25 * 1.0 * 0.9); expect(lost).toBeLessThan(3 * Math.PI * 25 * 1.0 * 1.1);
+    // vier Füße auf dem Quadrat sitzen in den Ecken, innerhalb von Rundung und Rand
+    const s4 = S({ shape: "square", width_mm: 100, corner_mm: 12, rim_mm: 3, feet: 4, min_height_mm: 2.04, max_height_mm: 3 });
+    const c4 = feetCenters(s4, 100, 100);
+    expect(c4.length).toBe(4);
+    for (const [x, y] of c4) { expect(Math.abs(Math.abs(x) - Math.abs(y))).toBeLessThan(1e-6); expect(roundBox(x, y, 50, 50, 12)).toBeLessThanOrEqual(-(3 + 5 + 2) + 0.06); expect(roundBox(x, y, 50, 50, 12)).toBeGreaterThan(-10.2); }
+    // zu dünn: die Tiefe wird begrenzt, FEET_KEEP_MM bleibt stehen; reicht es gar nicht, entfällt die Aussparung
+    const thin = buildHeightmap(flat, { ...s3, min_height_mm: 1.16, max_height_mm: 2 }, { mode: "dark_high" });
+    expect(thin.feet!.depth).toBeCloseTo(0.52, 5); expect(thin.feet!.thin - thin.feet!.depth).toBeGreaterThanOrEqual(FEET_KEEP_MM - 1e-6);
+    const tooThin = buildHeightmap(flat, { ...s3, min_height_mm: 0.48, max_height_mm: 2 }, { mode: "dark_high" });
+    expect(tooThin.feet!.depth).toBe(0); expect(tooThin.bottom ?? null).toBeNull();
+    // zu klein für die Füße: keine
+    expect(feetCenters({ ...s3, feet_mm: 30 }, 30, 30)).toEqual([]);
+    expect(feetCenters({ ...s3, feet: 5 }, 100, 100)).toEqual([]);
+    const tiny = buildHeightmap(flat, { ...s3, width_mm: 20 }, { mode: "dark_high" });
+    applyFeet(tiny, { ...s3, width_mm: 20, feet_mm: 30 });
+    expect(tiny.feet).toMatchObject({ count: 0, depth: 0 });
+  });
+
+  it("Dicke: Relief und Wechsel wandern gemeinsam, das Bild bleibt gleich", () => {
+    const s = S(), stops = [{ filament: BLACK, start_layer: 1 }, { filament: GREY, start_layer: 9 }, { filament: WHITE, start_layer: 18 }];
+    const before = buildHeightmap(gradient(), s, { mode: "bright_high" }), simBefore = simulate(before, stops);
+    const s2 = { ...s }, st2 = stops.map((x) => ({ ...x }));
+    expect(shiftThickness(s2, st2, 3.04)).toBe(10);
+    expect([s2.min_height_mm, s2.max_height_mm]).toEqual([1.28, 3.04]);
+    expect(st2.map((x) => x.start_layer)).toEqual([1, 19, 28]);
+    const after = buildHeightmap(gradient(), s2, { mode: "bright_high" }), simAfter = simulate(after, st2);
+    for (let i = 0; i < before.heights.length; i += 37) expect(after.heights[i] - before.heights[i]).toBeCloseTo(0.8, 5);
+    for (let i = 0; i < simBefore.length; i += 53) expect(simAfter[i]).toBeCloseTo(simBefore[i], 5);
+    // zurück, und nicht dünner als möglich: Die minimale Höhe bleibt über der ersten Schicht
+    expect(shiftThickness(s2, st2, 2.24)).toBe(-10);
+    expect([s2.min_height_mm, s2.max_height_mm, st2[1].start_layer]).toEqual([0.48, 2.24, 9]);
+    expect(shiftThickness(s2, st2, 0.5)).toBe(-3);
+    expect(s2.min_height_mm).toBeCloseTo(0.24, 6); expect(st2.map((x) => x.start_layer)).toEqual([1, 6, 15]);
+    // ein Wechsel direkt über dem ersten begrenzt ebenfalls
+    const s3 = { ...s, min_height_mm: 2 }, st3 = [{ filament: BLACK, start_layer: 1 }, { filament: WHITE, start_layer: 3 }];
+    expect(shiftThickness(s3, st3, 0.5)).toBe(-1);
+    expect(st3[1].start_layer).toBe(2);
+    expect(shiftThickness(s3, st3, s3.max_height_mm)).toBe(0);
+    // die Rahmenhöhe wandert mit
+    const s4 = { ...s, border_mm: 2, border_height_mm: 2.24 };
+    shiftThickness(s4, [], 3.04);
+    expect(s4.border_height_mm).toBeCloseTo(3.04, 6);
+  });
+});

@@ -2,6 +2,30 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.31.0 – 2026-11-28
+
+- New: coasters for cups and glasses. Section "Coaster" on the left: "Set up round" or "Set up square" sets the outline, 100 mm size, a 2 mm raised rim against drips and a thickness of at least 1.6 mm everywhere.
+- New: choose the image section right in the preview. With "Crop" above the preview, dragging moves the image on the shape, the mouse wheel makes it larger or smaller and a double-click resets both. While dragging, the original shows the new position immediately.
+- The whole image can now be moved over round and square shapes, not only the centred part; "Motif size" goes up to 5× and "Move motif" up to ±150 %.
+- New outline "Square" and new setting "Corner radius" for rectangle and square; a raised rim follows the rounded corners.
+- New: "Thickness" moves the whole picture up or down. Only the bottom filament gets thicker or thinner, the picture and all colour changes stay the same.
+- New: "Feet" adds 3 or 4 round recesses in the underside for self-adhesive rubber feet or felt pads, with adjustable diameter and depth. They sit as far out as possible, all have the same depth and keep at least 0.6 mm of material above them; a hint says when the coaster is too thin or too small. The export dialog mentions them, the 3D view shows them from below.
+- Fixed: points of colour islands now follow a scaled or moved motif.
+- Fixed: step 2 "Size & shape" opens the sections "Size" and "Shape" again (in 0.30.0 both stayed closed).
+- Good to know: for hot cups print in PETG, PLA softens at about 55 °C. There is no large recess for a cork sheet, because a wide recess on the bed side cannot be printed cleanly without supports; cork or felt can be glued onto the flat underside.
+
+<!-- de
+- Neu: Untersetzer für Tassen und Gläser. Abschnitt „Untersetzer“ links: „Rund einrichten“ oder „Eckig einrichten“ stellt den Umriss, 100 mm Größe, 2 mm erhöhten Rand gegen Tropfen und überall mindestens 1,6 mm Dicke ein.
+- Neu: Bildausschnitt direkt in der Vorschau wählen. Mit „Ausschnitt“ über der Vorschau verschiebt Ziehen das Bild auf der Form, das Mausrad macht es größer oder kleiner, ein Doppelklick setzt beides zurück. Beim Ziehen zeigt das Original sofort die neue Lage.
+- Das ganze Bild lässt sich jetzt über runde und quadratische Formen schieben, nicht nur der mittlere Teil; „Motivgröße“ reicht bis 5×, „Motiv nach rechts/unten“ bis ±150 %.
+- Neuer Umriss „Quadrat“ und neue Einstellung „Eckenradius“ für Rechteck und Quadrat; ein erhöhter Rand folgt den runden Ecken.
+- Neu: „Dicke“ schiebt das ganze Bild nach oben oder unten. Nur das unterste Filament wird dicker oder dünner, das Bild und alle Farbwechsel bleiben gleich.
+- Neu: „Füße“ setzt 3 oder 4 runde Aussparungen in die Unterseite, für selbstklebende Gummifüße oder Filzgleiter, mit einstellbarem Durchmesser und einstellbarer Tiefe. Sie sitzen so weit außen wie möglich, sind alle gleich tief und lassen mindestens 0,6 mm Material über sich stehen; ein Hinweis sagt, wenn der Untersetzer dafür zu dünn oder zu klein ist. Der Export-Dialog nennt sie, die 3D-Ansicht zeigt sie von unten.
+- Behoben: Punkte von Farbinseln folgen jetzt einem vergrößerten oder verschobenen Motiv.
+- Behoben: Schritt 2 „Größe & Form“ öffnet wieder die Abschnitte „Größe“ und „Form“ (in 0.30.0 blieben beide zu).
+- Gut zu wissen: Für heiße Tassen besser PETG drucken, PLA wird ab etwa 55 °C weich. Eine große Aussparung für eine Korkplatte gibt es nicht, weil sich eine breite Aussparung auf der Druckbett-Seite ohne Stützen nicht sauber drucken lässt; Kork oder Filz lässt sich auf die ebene Unterseite kleben.
+-->
+
 ## 0.30.0 – 2026-11-28
 
 - New: lenticular image. A third kind next to colour relief and lithophane: a surface of small triangular ridges that shows the opened image from the left and a second image from the right; from the front both are interleaved.
