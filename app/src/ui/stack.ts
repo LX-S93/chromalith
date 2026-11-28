@@ -1,5 +1,5 @@
 /** Filament-Stapel: Liste (oben = zuletzt gedruckt), Startschichten, Schichtbalken mit ziehbaren Wechseln. */
-import { filamentAtLayer, filamentLabel, filamentLuminance, layerTopZ, type ColorStop } from "../core";
+import { filamentAtLayer, filamentKey, filamentLabel, filamentLuminance, layerTopZ, type ColorStop } from "../core";
 import { button, clear, contextMenu, h } from "./dom";
 import { num, tr } from "../i18n";
 
@@ -30,6 +30,9 @@ export class StackPanel {
   private zLabels = new Map<number, HTMLElement>();
   private rangeLabels = new Map<number, HTMLElement>();
   private inputs = new Map<number, HTMLInputElement>();
+  /** Platz je Filament (Schlüssel) für den Filamentwechsler; null = keine Plätze anzeigen */
+  private slots: Map<string, number> | null = null;
+  private slotLimit: number | null = null;
 
   constructor(private host: StackHost) {
     const actions = h("div", { class: "stack-actions" },
@@ -65,6 +68,14 @@ export class StackPanel {
     else this.drawBar();
   }
 
+  /** Plätze für den Filamentwechsler (AMS): Platz je Filament und Zahl der vorhandenen Plätze. */
+  setSlots(slots: Map<string, number> | null, limit: number | null) {
+    const sig = (m: Map<string, number> | null, l: number | null) => JSON.stringify([m ? [...m] : null, l]);
+    if (sig(slots, limit) === sig(this.slots, this.slotLimit)) return;
+    this.slots = slots; this.slotLimit = limit;
+    this.render();
+  }
+
   /** Startschichten in den gültigen Bereich bringen (aufsteigend, erstes = 1). */
   clamp() {
     const st = this.stops;
@@ -93,11 +104,14 @@ export class StackPanel {
       const z = h("div", { class: "z" });
       this.zLabels.set(idx, z);
       const above = s.start_layer > this.li.layerCount && idx > 0;
+      const slot = this.slots?.get(filamentKey(s.filament));
       const row = h("div", { class: "stop" + (this.selected === idx ? " selected" : "") + (s.disabled ? " off" : ""), style: { opacity: above || s.disabled ? "0.5" : "1" },
         title: s.disabled ? "Ausgeblendet: wird nicht gedruckt. Rechtsklick zum Einblenden." : "Rechtsklick: ausblenden, ersetzen, bearbeiten, entfernen" },
         h("div", { class: "swatch", style: { background: s.filament.color } }),
         h("div", { class: "title" }, h("b", null, filamentLabel(s.filament)),
-          h("small", null, s.disabled ? "ausgeblendet" : `${s.filament.material} · TD ${s.filament.td.toFixed(1)}`),
+          h("small", null, s.disabled ? "ausgeblendet" : `${s.filament.material} · TD ${s.filament.td.toFixed(1)}`,
+            slot && !s.disabled ? h("span", { class: "slot" + (this.slotLimit !== null && slot > this.slotLimit ? " over" : ""),
+              title: this.slotLimit !== null && slot > this.slotLimit ? "Für dieses Filament ist im AMS kein Platz mehr frei." : "Nummer dieses Filaments im Slicer-Projekt. Welcher AMS-Platz es wird, ordnet der Slicer beim Senden an den Drucker zu." }, `Platz ${slot}`) : ""),
           (() => { const r = h("small", { class: "range", "data-notr": true }); this.rangeLabels.set(idx, r); return r; })()),
         h("div", null, h("div", { class: "layer" }, h("span", { class: "hint" }, "ab"), input), z));
       row.addEventListener("click", () => { this.selected = idx; this.render(); });
@@ -152,6 +166,13 @@ export class StackPanel {
     let t = `Modell: ${layerCount} Schichten, Bild beginnt bei Schicht ${minLayer}.`;
     if (this.stops.slice(1).some((s) => s.start_layer > layerCount)) t += " Ein Filament liegt oberhalb des Modells.";
     this.info.append(t);
+    if (this.slots && this.slotLimit !== null && this.slots.size > 1) {
+      const need = this.slots.size, have = this.slotLimit;
+      this.info.append(need > have
+        ? h("div", { class: "hint warn", style: { marginTop: "6px" } },
+          `Der Stapel braucht ${need} verschiedene Filamente, das AMS hat ${have} Plätze. Die 3MF enthält dann keine Filamentwechsel. Abhilfe: weniger Filamente nehmen („Vorschlagen“ begrenzt die Anzahl) oder unter „Slicer und AMS“ auf Pausen umstellen.`)
+        : h("div", { style: { marginTop: "6px" } }, `AMS: ${need} von ${have} Plätzen belegt.`));
+    }
     if (colorMode) this.info.append(h("div", { style: { marginTop: "6px" } },
       "Farbtreuer Modus: Die Reihenfolge darf bunt gemischt sein. „Automatisch verteilen“ sucht die Wechsel, die die Bildfarben am besten treffen."));
     else if (!this.isMonotonic()) this.info.append(h("div", { class: "hint warn", style: { marginTop: "6px" } },

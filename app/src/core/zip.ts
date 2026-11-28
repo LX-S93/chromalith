@@ -1,4 +1,4 @@
-/** Minimaler ZIP-Schreiber (Deflate über CompressionStream, sonst unkomprimiert). */
+/** Minimaler ZIP-Schreiber und -Leser (Deflate über CompressionStream / DecompressionStream). */
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
@@ -50,5 +50,42 @@ export async function makeZip(files: { name: string; data: Uint8Array | string }
   const out = new Uint8Array(all.reduce((a, b) => a + b.length, 0));
   let o = 0;
   for (const p of all) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+async function inflate(d: Uint8Array): Promise<Uint8Array> {
+  if (typeof DecompressionStream === "undefined") throw new Error("Diese Umgebung kann keine ZIP-Dateien entpacken.");
+  const ds = new DecompressionStream("deflate-raw");
+  return new Uint8Array(await new Response(new Blob([d as BlobPart]).stream().pipeThrough(ds)).arrayBuffer());
+}
+
+/** Liest Dateien aus einem ZIP-Archiv (z. B. einer .3mf). `want` wählt aus, welche entpackt werden;
+ *  ohne Angabe alle. Rückgabe: Dateiname -> Inhalt. Verschlüsselte und ZIP64-Archive werden nicht unterstützt. */
+export async function readZip(bytes: Uint8Array, want: (name: string) => boolean = () => true): Promise<Map<string, Uint8Array>> {
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let end = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 65535); i--) if (v.getUint32(i, true) === 0x06054b50) { end = i; break; }
+  if (end < 0) throw new Error("Die Datei ist kein ZIP-Archiv.");
+  const count = v.getUint16(end + 10, true);
+  let p = v.getUint32(end + 16, true);
+  if (count === 0xffff || p === 0xffffffff) throw new Error("Das Archiv ist zu groß (ZIP64 wird nicht unterstützt).");
+  const dec = new TextDecoder();
+  const out = new Map<string, Uint8Array>();
+  for (let n = 0; n < count; n++) {
+    if (p + 46 > bytes.length || v.getUint32(p, true) !== 0x02014b50) throw new Error("Das ZIP-Archiv ist beschädigt.");
+    const flags = v.getUint16(p + 8, true), method = v.getUint16(p + 10, true);
+    const csize = v.getUint32(p + 20, true), nameLen = v.getUint16(p + 28, true);
+    const extraLen = v.getUint16(p + 30, true), commentLen = v.getUint16(p + 32, true), local = v.getUint32(p + 42, true);
+    const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen)).replace(/\\/g, "/");
+    p += 46 + nameLen + extraLen + commentLen;
+    if (name.endsWith("/") || !want(name)) continue;
+    if (flags & 1) throw new Error("Das Archiv ist verschlüsselt.");
+    if (local + 30 > bytes.length || v.getUint32(local, true) !== 0x04034b50) throw new Error("Das ZIP-Archiv ist beschädigt.");
+    const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+    const body = bytes.subarray(start, start + csize);
+    if (method === 0) out.set(name, body.slice());
+    else if (method === 8) out.set(name, await inflate(body));
+    else throw new Error("Das Archiv nutzt ein nicht unterstütztes Packverfahren.");
+  }
   return out;
 }

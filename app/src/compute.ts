@@ -1,5 +1,5 @@
 /** Schnittstelle zum Rechen-Worker (Promise-basiert). */
-import type { ColorStop, HeightSettings, LithoLight, Raster } from "./core";
+import type { ColorStop, HeightSettings, LithoLight, Raster, ThreeMfInfo, ThreeMfOptions } from "./core";
 
 const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
 let nextId = 1;
@@ -41,8 +41,8 @@ export const setImage = (image: Raster | null) =>
   call<{ palette: { color: string; share: number }[] }>({ type: "image", image });
 export const preview = (settings: HeightSettings, stops: ColorStop[]) => call<PreviewResult>({ type: "preview", settings, stops });
 export const autoDistribute = (settings: HeightSettings, stops: ColorStop[]) => call<{ stops: ColorStop[] }>({ type: "auto", settings, stops });
-export const exportAll = (settings: HeightSettings, stops: ColorStop[], name: string) =>
-  call<{ stl: ArrayBuffer; threemf: ArrayBuffer; report: string; json: string; preview: ArrayBuffer; width: number; height: number }>({ type: "export", settings, stops, name });
+export const exportAll = (settings: HeightSettings, stops: ColorStop[], name: string, slicer: ThreeMfOptions = {}) =>
+  call<{ stl: ArrayBuffer; threemf: ArrayBuffer; threemfInfo: ThreeMfInfo; report: string; json: string; preview: ArrayBuffer; width: number; height: number }>({ type: "export", settings, stops, name, slicer });
 export const previewImage = (settings: HeightSettings, stops: ColorStop[], maxSide = 520) =>
   call<{ width: number; height: number; preview: ArrayBuffer }>({ type: "preview", settings, stops, maxSide, lite: true });
 export const suggest = (settings: HeightSettings, stops: ColorStop[], library: ColorStop["filament"][], count: number, mode: string, progress?: (f: number) => void) =>

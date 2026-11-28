@@ -221,6 +221,8 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 
 .stop .title small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stop .title small.range { color: var(--text); opacity: .8; font-variant-numeric: tabular-nums; }
 .stop .title small.range:empty { display: none; }
+.stop .slot { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text); font-size: 10.5px; }
+.stop .slot.over { background: color-mix(in srgb, var(--err) 30%, transparent); }
 .modal footer { flex-wrap: wrap; }
 .modal footer .btn { white-space: nowrap; }
 .modal.small { width: min(520px, 94vw); }

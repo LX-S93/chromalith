@@ -30,12 +30,21 @@ function why(order: "dark_base" | "light_base" | "free", error: number, best: nu
   return tr(name) + " " + tr("Ein ruhiges Relief würde die Farben hier deutlich schlechter treffen; es lässt sich oben unter „Aufbau“ trotzdem wählen.");
 }
 
-export function openSuggest(settings: HeightSettings, current: ColorStop[], library: Filament[], apply: (stops: ColorStop[]) => void) {
+/** `slots`: Plätze des Filamentwechslers (AMS); null = keine Grenze. */
+export function openSuggest(settings: HeightSettings, current: ColorStop[], library: Filament[], slots: number | null, apply: (stops: ColorStop[]) => void) {
   let count = store.get("suggestCount", 6);
+  // Mit AMS: höchstens so viele Filamente vorschlagen, wie Plätze da sind (von Hand lässt sich mehr einstellen)
+  if (slots !== null && slots >= 2) count = Math.min(count, slots);
+  const slotHint = h("p", { class: "hint", style: { margin: 0 } });
+  const showSlotHint = () => {
+    if (slots === null) { slotHint.style.display = "none"; return; }
+    slotHint.className = "hint" + (count > slots ? " warn" : "");
+    slotHint.textContent = tr(count > slots ? "Das sind mehr Filamente, als das AMS Plätze hat ({}). Die 3MF enthält dann keine Filamentwechsel." : "Das AMS hat {} Plätze. Farbinseln brauchen je einen weiteren Platz.").replace("{}", String(slots));
+  };
   let ownedOnly = store.get("suggestOwned", false);
   const ownedN = library.filter((f) => f.owned).length;
-  const countF = sliderField("Anzahl Filamente", 2, 10, 1, "", (v) => { count = v; store.set("suggestCount", v); }, "So viele Filamente soll der Vorschlag enthalten.");
-  countF.set(count);
+  const countF = sliderField("Anzahl Filamente", 2, 10, 1, "", (v) => { count = v; store.set("suggestCount", v); showSlotHint(); }, "So viele Filamente soll der Vorschlag enthalten.");
+  countF.set(count); showSlotHint();
   const ownF = switchField(`Nur vorhandene Filamente (${ownedN})`, (v) => { ownedOnly = v; store.set("suggestOwned", v); },
     "Nur Filamente, die in der Bibliothek als „Vorhanden“ markiert sind.");
   ownF.set(ownedOnly && ownedN >= 2);
@@ -64,6 +73,7 @@ export function openSuggest(settings: HeightSettings, current: ColorStop[], libr
   const content = h("div", { style: { display: "grid", gap: "14px" } },
     h("p", { class: "hint", style: { margin: 0 } }, `Chromalith probiert Filamente aus deiner Bibliothek (${library.length}) durch und sucht das Set samt Reihenfolge und Wechsel-Schichten, mit dem die Farben des Bildes am besten getroffen werden.`),
     h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", alignItems: "end" } }, countF.el, matF.el, modeF.el, ownF.el),
+    slotHint,
     h("div", null, go), progress, result);
   const close = modal("Filamente vorschlagen", content, [button("Schließen", () => close()), applyBtn]);
 

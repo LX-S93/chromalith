@@ -50,8 +50,10 @@ by size and SHA-256 before it is started.
 - 2D preview with before/after slider, 3D view with layer slider and flat-original-vs-relief comparison
 - Shapes: rectangle, circle, centre hole, raised rim, clock numerals; scale and move the motif inside the shape
 - Colour islands: recolour selected areas
-- Export: STL, 3MF with embedded colour changes (Bambu Studio / OrcaSlicer), colour change list (text and JSON),
-  preview image and a step-by-step **print assistant** page for your phone
+- Export: STL, 3MF as a ready-to-slice project for **Bambu Studio / OrcaSlicer with AMS** (filaments on slots,
+  layer heights and filament changes included) or with colour changes for PrusaSlicer, colour change list
+  (text and JSON), preview image and a step-by-step **print assistant** page for your phone
+- The stack shows the AMS slot of every filament and warns when it needs more filaments than the AMS has slots
 - Consumption, weight and cost per filament
 - Filament library with import, plus optional read-only sync with [Spoolman](https://github.com/Donkie/Spoolman)
 - **Lithophanes:** flat, curved, cylinder (lampshade) and sphere (ornament with hanging loop and optional
@@ -66,10 +68,37 @@ by size and SHA-256 before it is started.
    "Distribute automatically" places the changes, "Suggest filaments" picks matching colours.
    Then fine-tune the start layers and watch the preview.
 4. **Export** (Ctrl+E) writes the model, the colour change plan, a preview and the print assistant.
-5. In Bambu Studio / OrcaSlicer open the `.3mf`: the colour changes are already in the layer slider.
-   In other slicers load the STL and insert a colour change (pause / M600) at the listed layers.
+5. Open the `.3mf` in your slicer (see below). In other slicers load the STL and insert a colour change
+   (pause / M600) at the listed layers.
 
 Projects are saved as `.chroma` (image, settings and stack in one file).
+
+## 3MF for your slicer and the AMS
+
+Menu **⋯ → Slicer and AMS …** sets what the `.3mf` is written for.
+
+**Bambu Studio / OrcaSlicer.** These slicers take filament changes and layer heights only from a complete
+project with printer, process and filaments. Only your slicer knows these settings, so Chromalith needs a
+project saved there once as a **template**:
+
+1. In the slicer select your printer and a process, and add as many filaments as your AMS has slots
+   (each with the material of your spools).
+2. Choose *File → Save Project as*. The build plate may be empty.
+3. In Chromalith choose that `.3mf` under **Slicer and AMS**. It is remembered for all projects.
+
+Every export is then a project you only have to open and slice: printer and process from your template, the
+colours of the stack on filaments 1…n in the order they are printed, first layer and layer height, 100% infill,
+and a filament change at each colour change, so the AMS swaps on its own. Before printing check that the
+material of each slot matches your spools. The flush volumes are an estimate based on the colours; the slicer
+can recalculate them.
+
+If the stack needs more different filaments than the template has, the file contains no filament changes and
+Chromalith warns beforehand: the stack shows the slot of every filament, and "Suggest filaments" limits itself
+to the number of slots. Without an AMS choose "Pause, change by hand": the printer then stops before each
+change. Without a template the `.3mf` contains only the model.
+
+**PrusaSlicer.** The colour changes (M600) are in the file; set first layer, layer height and 100% infill in
+the print profile.
 
 ## Filaments and TD
 

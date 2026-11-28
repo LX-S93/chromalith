@@ -2,6 +2,28 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.27.0 – 2026-11-28
+
+- 3MF export for Bambu Studio / OrcaSlicer with AMS: the file is now a complete project. The slicer opens it with your printer and process, the colours of the stack on the filament slots, the first layer and layer height, 100% infill and a filament change at every colour change, so the AMS swaps on its own and nothing has to be typed in from the colour change list.
+- For this Chromalith needs a project saved once in your own slicer as a template (menu "⋯ → Slicer and AMS …"; the dialog explains the steps). Printer, process and the material of each slot come from this template and are remembered for all projects.
+- Correction: the 3MF files of earlier versions arrived in current Bambu Studio and OrcaSlicer versions without colour changes. These slicers take changes only from a complete project and ignore the kind of entry that was written. Without a template the export now says so plainly instead of promising changes.
+- AMS slots: every filament in the stack shows its slot. Filaments are assigned in the order they are printed; a filament used twice shares one slot. If the stack needs more different filaments than the AMS has slots, a warning appears in the stack and in the export dialog, and the file then contains no filament changes.
+- "Suggest filaments" starts with the number of AMS slots and does not go beyond it.
+- Without an AMS: "Pause, change by hand" writes a pause before each change.
+- PrusaSlicer can be chosen as target: plain 3MF with the colour changes (M600) on the layer slider.
+- The flush volumes in the project are an estimate based on the colours (more when changing to a lighter colour); the slicer can recalculate them.
+
+<!-- de
+- 3MF-Export für Bambu Studio / OrcaSlicer mit AMS: Die Datei ist jetzt ein vollständiges Projekt. Der Slicer öffnet sie mit deinem Drucker und Prozess, den Farben des Stapels auf den Filament-Plätzen, erster Schicht und Schichthöhe, 100 % Füllung und einem Filamentwechsel an jedem Farbwechsel. Das AMS wechselt von selbst, und aus der Farbwechsel-Liste muss nichts mehr abgetippt werden.
+- Dafür braucht Chromalith einmal ein in deinem Slicer gespeichertes Projekt als Vorlage (Menü „⋯ → Slicer und AMS …“; der Dialog erklärt die Schritte). Drucker, Prozess und das Material der Plätze kommen aus dieser Vorlage und werden für alle Projekte gemerkt.
+- Richtigstellung: Die 3MF-Dateien früherer Versionen kamen in aktuellen Versionen von Bambu Studio und OrcaSlicer ohne Farbwechsel an. Diese Slicer übernehmen Wechsel nur aus einem vollständigen Projekt und übergehen die Art von Eintrag, die bisher geschrieben wurde. Ohne Vorlage sagt der Export das jetzt klar, statt Wechsel zu versprechen.
+- AMS-Plätze: Jedes Filament im Stapel zeigt seinen Platz. Die Filamente werden in der Reihenfolge vergeben, in der sie gedruckt werden; ein Filament, das zweimal vorkommt, belegt nur einen Platz. Braucht der Stapel mehr verschiedene Filamente, als das AMS Plätze hat, erscheint eine Warnung im Stapel und im Export-Dialog, und die Datei enthält dann keine Filamentwechsel.
+- „Filamente vorschlagen“ beginnt mit der Zahl der AMS-Plätze und geht nicht darüber hinaus.
+- Ohne AMS: „Pause, Wechsel von Hand“ schreibt vor jedem Wechsel eine Pause.
+- PrusaSlicer ist als Ziel wählbar: einfache 3MF mit den Farbwechseln (M600) im Schicht-Regler.
+- Die Spülmengen im Projekt sind eine Schätzung aus den Farben (mehr beim Wechsel zu einer helleren Farbe); im Slicer lassen sie sich neu berechnen.
+-->
+
 ## 0.26.0 – 2026-11-26
 
 - True-colour mode keeps details: colours the stack cannot produce used to land on the same layer, so features that differ mainly in brightness disappeared (for example the sun in the "Sunset" example). Such colours are now placed by their lightness, and the brightest and darkest tones of the image are compressed into the range of the stack instead of being cut off. Colours the stack matches well stay as they were.

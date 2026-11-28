@@ -138,8 +138,8 @@ self.onmessage = (ev: MessageEvent) => {
       const stl = writeStl(mesh, `Chromalith ${ev.data.name}`);
       const sim = simulate(hm, est);
       const preview = toRGBA(sim, hm.width * hm.height);
-      write3mf(mesh, hm, est, ev.data.name).then((tmf) => {
-        const result = { stl: stl.buffer, threemf: tmf.buffer, report: planReport(hm, est, ev.data.name),
+      write3mf(mesh, hm, est, ev.data.name, ev.data.slicer ?? {}).then(({ data: tmf, info }) => {
+        const result = { stl: stl.buffer, threemf: tmf.buffer, threemfInfo: info, report: planReport(hm, est, ev.data.name),
           json: JSON.stringify(planJson(hm, est), null, 2), preview: preview.buffer, width: hm.width, height: hm.height };
         (self as any).postMessage({ id, ok: true, result }, [stl.buffer, tmf.buffer, preview.buffer]);
       }, (e) => (self as any).postMessage({ id, ok: false, error: String(e?.message ?? e) }));

@@ -198,7 +198,12 @@ it("3MF: gültiges ZIP mit Modell und Farbwechseln", async () => {
   const ch = colorChanges(hm, stops);
   expect(ch).toHaveLength(1);
   expect(ch[0].z).toBeCloseTo(s.base_layer_mm + 11 * 0.08, 5);
-  const files = await unzip(await write3mf(mesh, hm, stops, "Test & <1>"));
+  const out = await write3mf(mesh, hm, stops, "Test & <1>");
+  // ohne Vorlage: nur das Modell, weil der Slicer Wechsel nur aus einem vollständigen Projekt übernimmt
+  expect(out.info).toMatchObject({ target: "bambu", changes: "none", reason: "no_template", project: false, changeCount: 1 });
+  const files = await unzip(out.data);
+  expect(files.has("Metadata/custom_gcode_per_layer.xml")).toBe(false);
+  expect(files.get("Metadata/chromalith_farbwechsel.txt")).toContain("Schicht 12");
   expect([...files.keys()]).toContain("3D/3dmodel.model");
   expect(files.get("3D/3dmodel.model")).toContain("Test &amp; &lt;1&gt;");
   expect(files.get("3D/3dmodel.model")).toContain('p:path="/3D/Objects/object_1.model"');
@@ -206,7 +211,155 @@ it("3MF: gültiges ZIP mit Modell und Farbwechseln", async () => {
   const model = files.get("3D/Objects/object_1.model")!;
   expect((model.match(/<vertex /g) ?? []).length).toBe(mesh.vertices.length / 3);
   expect((model.match(/<triangle /g) ?? []).length).toBe(mesh.faces.length / 3);
-  expect(files.get("Metadata/custom_gcode_per_layer.xml")).toContain(`top_z="${+(s.base_layer_mm + 11 * 0.08).toFixed(4)}"`);
+});
+
+import { makeZip, readZip, readSlicerTemplate, patchProjectSettings, planSlots, flushVolume, validTemplate } from "../src/core";
+
+/** Nachbau eines im Slicer gespeicherten Projekts (nur die Teile, die Chromalith liest). */
+async function fakeProject(filaments = 4, app = "BambuStudio-02.03.00.70"): Promise<Uint8Array> {
+  const n = filaments;
+  const cfg = {
+    version: "02.03.00.70", name: "project_settings", from: "project",
+    printer_settings_id: "Testdrucker 0.4 nozzle", print_settings_id: "0.20mm Standard @Test",
+    filament_settings_id: Array.from({ length: n }, (_, i) => `Test PLA ${i + 1}`), filament_type: Array(n).fill("PLA"),
+    filament_colour: ["#FFFFFF", "#000000", "#FF0000", "#00FF00"].slice(0, n), filament_multi_colour: ["#FFFFFF", "#000000", "#FF0000", "#00FF00"].slice(0, n),
+    filament_colour_type: Array(n).fill("1"),
+    layer_height: "0.2", initial_layer_print_height: "0.2", nozzle_diameter: ["0.4"],
+    sparse_infill_density: "15%", sparse_infill_pattern: "gyroid",
+    different_settings_to_system: ["sparse_infill_density", ...Array(n).fill(""), ""],
+    flush_volumes_matrix: Array(n * n).fill("111"), flush_multiplier: "1",
+    printable_area: ["0x0", "180x0", "180x180", "0x180"], machine_pause_gcode: "M400 U1", enable_prime_tower: "1",
+  };
+  return makeZip([
+    { name: "[Content_Types].xml", data: "<Types/>" },
+    { name: "3D/3dmodel.model", data: `<?xml version="1.0"?><model><metadata name="Application">${app}</metadata><metadata name="BambuStudio:3mfVersion">1</metadata><resources/><build/></model>` },
+    { name: "Metadata/project_settings.config", data: JSON.stringify(cfg, null, 4) },
+    { name: "Metadata/filament_settings_1.config", data: '{"name":"Eigenes PLA"}' },
+    { name: "Metadata/plate_1.png", data: new Uint8Array([1, 2, 3]) },
+  ]);
+}
+
+describe("Slicer-Vorlage und 3MF-Projekt", () => {
+  const lib = starterLibrary();
+  const fil = (n: string) => lib.find((f) => f.name === n && f.brand === "Generisch")!;
+  const s = normalizeSettings({ width_mm: 20, pixel_size_mm: 1 });
+  const img = fromRGBA8(4, 2, new Uint8Array([0,0,0,255, 80,80,80,255, 160,160,160,255, 255,255,255,255, 0,0,0,255, 80,80,80,255, 160,160,160,255, 255,255,255,255]));
+  const hm = buildHeightmap(img, s, { mode: "bright_high" });
+  const mesh = heightmapToMesh(hm);
+  // Schwarz, Weiß, Grau und oben noch einmal Schwarz: vier Abschnitte, drei verschiedene Filamente
+  const stops = [{ filament: fil("Schwarz"), start_layer: 1 }, { filament: fil("Weiß"), start_layer: 6 }, { filament: fil("Grau hell"), start_layer: 12 }, { filament: fil("Schwarz"), start_layer: 18 }];
+
+  it("ZIP lesen: Inhalt wie geschrieben, Auswahl nach Namen", async () => {
+    const big = "abc".repeat(5000);
+    const z = await makeZip([{ name: "a/b.txt", data: big }, { name: "c.bin", data: new Uint8Array([0, 255, 7]) }]);
+    const all = await readZip(z);
+    expect(new TextDecoder().decode(all.get("a/b.txt")!)).toBe(big);
+    expect([...all.get("c.bin")!]).toEqual([0, 255, 7]);
+    expect([...(await readZip(z, (n) => n.endsWith(".bin"))).keys()]).toEqual(["c.bin"]);
+    await expect(readZip(new Uint8Array(100))).rejects.toThrow();
+  });
+
+  it("Vorlage lesen: Drucker, Prozess, Filamente, Bettmitte, eigene Profile", async () => {
+    const t = await readSlicerTemplate(await fakeProject(), "meins.3mf");
+    expect(t.app).toBe("BambuStudio-02.03.00.70");
+    expect(t.printer).toBe("Testdrucker 0.4 nozzle");
+    expect(t.process).toBe("0.20mm Standard @Test");
+    expect(t.filaments).toHaveLength(4);
+    expect(t.filaments[2]).toEqual({ name: "Test PLA 3", type: "PLA", color: "#FF0000" });
+    expect(t.bed).toEqual([90, 90]);
+    expect(t.presets.map((p) => p.name)).toEqual(["Metadata/filament_settings_1.config"]);
+    expect(validTemplate(JSON.parse(JSON.stringify(t)))).toBe(true);
+    expect(validTemplate({ app: "x" })).toBe(false);
+    // eine Datei ohne Projekt-Einstellungen oder aus einem anderen Programm ist keine Vorlage
+    await expect(readSlicerTemplate((await write3mf(mesh, hm, stops, "x")).data, "x.3mf")).rejects.toThrow(/Projekt/);
+    await expect(readSlicerTemplate(await fakeProject(4, "Anderes-1.0"), "x.3mf")).rejects.toThrow(/Projekt/);
+    expect((await readSlicerTemplate(await fakeProject(2, "OrcaSlicer-2.3.1"), "o.3mf")).filaments).toHaveLength(2);
+  });
+
+  it("Plätze: gleiches Filament belegt nur einen Platz; Spülmenge zu Hell größer als zu Dunkel", () => {
+    const plan = planSlots(stops);
+    expect(plan.slot).toEqual([1, 2, 3, 1]);
+    expect(plan.filaments.map((f) => f.name)).toEqual(["Schwarz", "Weiß", "Grau hell"]);
+    expect(flushVolume("#000000", "#ffffff")).toBeGreaterThan(flushVolume("#ffffff", "#000000") + 300);
+    expect(flushVolume("#808080", "#808080")).toBe(150);
+    expect(flushVolume("#000000", "#ffffff")).toBeLessThanOrEqual(800);
+  });
+
+  it("Projekt-Einstellungen: nur Farben, Schichthöhen und Spülmengen ändern sich", async () => {
+    const t = await readSlicerTemplate(await fakeProject(), "meins.3mf");
+    const before = JSON.parse(t.settings);
+    const cfg = JSON.parse(patchProjectSettings(t.settings, { colors: ["#101010", "#f0f0f0", null, null], layerHeight: 0.08, firstLayer: 0.2 }));
+    expect(cfg.filament_colour).toEqual(["#101010", "#F0F0F0", "#FF0000", "#00FF00"]);
+    expect(cfg.filament_multi_colour.slice(0, 2)).toEqual(["#101010", "#F0F0F0"]);
+    expect(cfg.layer_height).toBe("0.08");
+    expect(cfg.initial_layer_print_height).toBe("0.2");
+    // die geänderten Werte müssen als Abweichung vom Profil vermerkt sein, sonst nimmt der Slicer seine eigenen
+    expect(cfg.different_settings_to_system[0].split(";").sort()).toEqual(["initial_layer_print_height", "layer_height", "sparse_infill_density", "sparse_infill_pattern"]);
+    // massiv drucken: 100 % Füllung, und ein Muster, das der Slicer bei 100 % annimmt
+    expect(cfg.sparse_infill_density).toBe("100%");
+    expect(cfg.sparse_infill_pattern).toBe("zig-zag");
+    const own = JSON.parse(patchProjectSettings(JSON.stringify({ ...before, sparse_infill_pattern: "concentric" }), { colors: [], layerHeight: 0.08, firstLayer: 0.2 }));
+    expect(own.sparse_infill_pattern).toBe("concentric");
+    expect(own.different_settings_to_system[0]).not.toContain("sparse_infill_pattern");
+    expect(cfg.different_settings_to_system).toHaveLength(6);
+    const m = cfg.flush_volumes_matrix, at = (i: number, j: number) => Number(m[i * 4 + j]);
+    expect(at(0, 1)).toBe(flushVolume("#101010", "#f0f0f0"));
+    expect(at(1, 0)).toBe(flushVolume("#f0f0f0", "#101010"));
+    expect(at(0, 2)).toBe(flushVolume("#101010", "#ff0000"));
+    expect(at(2, 3)).toBe(111); // beide Farben unverändert
+    expect(at(0, 0)).toBe(111);
+    for (const k of Object.keys(before)) if (!["filament_colour", "filament_multi_colour", "layer_height", "different_settings_to_system", "flush_volumes_matrix", "sparse_infill_density", "sparse_infill_pattern"].includes(k)) expect(cfg[k]).toEqual(before[k]);
+  });
+
+  it("3MF mit Vorlage: Projekt mit Filamentwechseln auf die Plätze", async () => {
+    const tpl = await readSlicerTemplate(await fakeProject(), "meins.3mf");
+    const out = await write3mf(mesh, hm, stops, "Bild", { template: tpl });
+    expect(out.info).toMatchObject({ target: "bambu", changes: "ams", project: true, available: 4, changeCount: 3 });
+    expect(out.info.slots.map((x) => [x.slot, x.filament.name, x.type])).toEqual([[1, "Schwarz", "PLA"], [2, "Weiß", "PLA"], [3, "Grau hell", "PLA"]]);
+    const files = await unzip(out.data);
+    expect(files.get("3D/3dmodel.model")).toContain('<metadata name="Application">BambuStudio-02.03.00.70</metadata>');
+    // Modell mittig auf dem Bett der Vorlage (180 mm)
+    expect(files.get("3D/3dmodel.model")).toMatch(/<item objectid="2"[^>]*transform="1 0 0 0 1 0 0 0 1 8[0-9.]* 8[0-9.]* 0"/);
+    const cfg = JSON.parse(files.get("Metadata/project_settings.config")!);
+    expect(cfg.filament_colour).toEqual([fil("Schwarz").color, fil("Weiß").color, fil("Grau hell").color].map((c) => c.toUpperCase()).concat(["#00FF00"]));
+    expect(cfg.layer_height).toBe("0.08");
+    expect(cfg.printer_settings_id).toBe("Testdrucker 0.4 nozzle");
+    expect(files.get("Metadata/filament_settings_1.config")).toBe('{"name":"Eigenes PLA"}');
+    const g = files.get("Metadata/custom_gcode_per_layer.xml")!;
+    const z = (layer: number) => +(s.base_layer_mm + (layer - 1) * 0.08).toFixed(4);
+    expect(g).toContain(`<layer top_z="${z(6)}" type="2" extruder="2" color="${fil("Weiß").color.toUpperCase()}" extra="" gcode="tool_change"/>`);
+    expect(g).toContain(`<layer top_z="${z(12)}" type="2" extruder="3"`);
+    expect(g).toContain(`<layer top_z="${z(18)}" type="2" extruder="1"`);
+    expect(g).toContain('<plate_info id="1"/>');
+    expect(g).toContain('<mode value="MultiAsSingle"/>');
+    expect(files.get("Metadata/model_settings.config")).toContain('key="extruder" value="1"');
+  });
+
+  it("3MF mit Vorlage: zu wenige Plätze, Pausen und PrusaSlicer", async () => {
+    const two = await readSlicerTemplate(await fakeProject(2), "zwei.3mf");
+    const few = await write3mf(mesh, hm, stops, "Bild", { template: two });
+    expect(few.info).toMatchObject({ changes: "none", reason: "too_many", project: true, available: 2 });
+    const f1 = await unzip(few.data);
+    expect(f1.has("Metadata/custom_gcode_per_layer.xml")).toBe(false);
+    expect(JSON.parse(f1.get("Metadata/project_settings.config")!).layer_height).toBe("0.08");
+
+    const pause = await write3mf(mesh, hm, stops, "Bild", { template: two, changeMode: "pause", pauseText: "Wechsel: {}" });
+    expect(pause.info.changes).toBe("pause");
+    const g = (await unzip(pause.data)).get("Metadata/custom_gcode_per_layer.xml")!;
+    expect((g.match(/type="1"/g) ?? []).length).toBe(3);
+    expect(g).toContain('extra="Wechsel: Generisch Weiß" gcode="M400 U1"');
+
+    const prusa = await write3mf(mesh, hm, stops, "Bild", { target: "prusa", template: two });
+    expect(prusa.info).toMatchObject({ target: "prusa", changes: "m600", project: false });
+    const fp = await unzip(prusa.data);
+    expect(fp.has("Metadata/project_settings.config")).toBe(false);
+    const pg = fp.get("Metadata/Prusa_Slicer_custom_gcode_per_print_z.xml")!;
+    expect((pg.match(/<code print_z="[0-9.]+" type="0" extruder="1" color="#[0-9A-F]{6}" extra="" gcode="M600"\/>/g) ?? []).length).toBe(3);
+    expect(pg).toContain('<mode value="SingleExtruder"/>');
+    const model = fp.get("3D/3dmodel.model")!;
+    expect((model.match(/<triangle /g) ?? []).length).toBe(mesh.faces.length / 3);
+    expect(model).toContain('<build><item objectid="1"/></build>');
+  });
 });
 
 import { applyIslands, effectiveStops } from "../src/core";

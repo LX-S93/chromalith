@@ -5,6 +5,7 @@ import {
   BREAKOUTS, DEFAULT_SETTINGS, HEIGHT_MODES, LUMA_METHODS, SHAPES, filamentLabel, fromRGBA8, nearestFilament, normalizeSettings, parseFilaments,
   parseProject, serializeLibrary, serializeProject, starterLibrary, toRGBA8, validate, type ColorStop, type Filament,
   LITHO_FORMS, materialDensity, filamentAtLayer, layerTopZ, simulate, effectiveMode, type HeightSettings, type Island, type Project, type Raster,
+  SLICER_TARGETS, filamentKey, planSlots, type ThreeMfInfo,
 } from "./core";
 import * as compute from "./compute";
 import type { PreviewResult } from "./compute";
@@ -16,6 +17,7 @@ import { openSpoolman, spoolmanAutoSync, syncSummary } from "./ui/spoolman";
 import { findLibraryFolders, importFiles, readFolder } from "./ui/importer";
 import { StackPanel } from "./ui/stack";
 import { openSuggest } from "./ui/suggest";
+import { loadSlicerPrefs, openSlicerSetup, slicerName, slotLimit } from "./ui/slicer";
 import { IslandPanel } from "./ui/islands";
 import { assistantHtml, openAssistant, type AssistData } from "./ui/assistant";
 import { ImageView } from "./ui/view2d";
@@ -45,6 +47,8 @@ const state = {
 };
 /** Filamente, die gedruckt werden (ohne ausgeblendete). */
 const activeStops = () => state.stops.filter((s) => !s.disabled);
+/** Ziel-Slicer, Vorlage und Art der Farbwechsel für die 3MF (gilt für alle Projekte) */
+const slicer = loadSlicerPrefs();
 const saveLibrary = () => store.set("library", library);
 const libHost = { library, saveLibrary };
 
@@ -122,6 +126,7 @@ menu.append(button(null, () => menu.classList.toggle("open"), { icon: "more", cl
     menuItem("Originalbild exportieren …", exportOriginal, "", "image"),
     menuItem("Vorschaubild exportieren …", exportPreview, "", "image"),
     menuItem("Druck-Assistent (Farbwechsel) …", showAssistant, "", "layers"),
+    menuItem("Slicer und AMS …", slicerSetup, "", "layers"),
     menuItem("Filament-Bibliothek …", () => openLibrary(libHost).then(() => refreshAnalysis()), "Strg+L", "library"),
     menuItem("Spoolman verbinden …", () => openSpoolman(libHost).then(() => refreshAnalysis()), "", "download"),
     menuItem("Nach Updates suchen …", () => checkForUpdate(VERSION, true, () => state.dirty && !!state.image, () => saveProject(false)), "", "download"),
@@ -611,6 +616,7 @@ async function rebuild() {
     view3d.setMesh(r.mesh);
     applyCut();
     const step = state.settings.layer_height_mm;
+    updateSlots();
     stack.setInfo({ layerCount: r.stackLayers, minLayer: r.minLayer, base: state.settings.base_layer_mm, step, colorMode: r.mode === "color" });
     syncMode(r.mode);
     refreshAnalysis();
@@ -679,7 +685,7 @@ async function autoDistribute() {
 
 function suggestFilaments() {
   if (!state.image) { toast("Bitte zuerst ein Bild öffnen."); return; }
-  openSuggest(state.settings, state.stops, library, (stops) => {
+  openSuggest(state.settings, state.stops, library, slotLimit(slicer), (stops) => {
     state.stops.splice(0, state.stops.length, ...stops);
     state.settings.height_mode = "color";
     fields.height_mode!.set("color"); syncMode();
@@ -786,6 +792,16 @@ function assistData(): AssistData | null {
   if (!r) return null;
   return { name: state.name, base: state.settings.base_layer_mm, step: state.settings.layer_height_mm, layers: r.layerCount, maxZ: r.maxZ,
     usage: r.usage.map((u) => ({ filament: u.filament, first: u.first, last: u.last })) };
+}
+/** Plätze der Filamente für den Filamentwechsler aus dem zuletzt berechneten Ergebnis (samt Farbinseln). */
+function updateSlots() {
+  const limit = slotLimit(slicer), r = state.result;
+  if (limit === null || !r || state.settings.litho) { stack.setSlots(null, null); return; }
+  const plan = planSlots(r.usage);
+  stack.setSlots(new Map(plan.filaments.map((f, i) => [filamentKey(f), i + 1])), limit);
+}
+async function slicerSetup() {
+  await openSlicerSetup(slicer, updateSlots);
 }
 function showAssistant() {
   const d = assistData();
@@ -924,7 +940,8 @@ async function exportAll() {
   busy.classList.add("on");
   try {
     compute.setIslands(state.islands);
-    const r = await compute.exportAll(state.settings, activeStops(), state.name);
+    const r = await compute.exportAll(state.settings, activeStops(), state.name,
+      { target: slicer.target, template: slicer.template, changeMode: slicer.changeMode, pauseText: tr("Filament wechseln: {}") });
     const stl = new Uint8Array(r.stl);
     const path = await saveFile(`${state.name}.stl`, stl, [{ name: "STL", extensions: ["stl"] }]);
     if (!path) return;
@@ -941,13 +958,44 @@ async function exportAll() {
       h("p", { style: { marginTop: 0 } }, "Geschrieben:"),
       h("ul", { style: { paddingLeft: "18px", lineHeight: "1.7" } }, ...files.map((f) => h("li", null, f.split(/[\\/]/).pop()!))),
       h("p", { class: "hint" }, `STL ${(stl.length / 1e6).toFixed(1)} MB, 3MF ${(r.threemf.byteLength / 1e6).toFixed(1)} MB.`),
-      h("p", { class: "hint" }, "Bambu Studio / OrcaSlicer: die .3mf öffnen (bei Nachfrage als Projekt laden). Die Farbwechsel stehen dann schon im Schicht-Regler. " +
-        `Im Prozess muss die erste Schicht ${state.settings.base_layer_mm.toFixed(2)} mm und die Schichthöhe ${state.settings.layer_height_mm.toFixed(2)} mm sein ` +
-        "(die Schichthöhe ist am Objekt schon eingetragen). Für andere Slicer stehen die Wechsel in der _farbwechsel.txt."),
+      ...slicerNotes(r.threemfInfo),
       h("pre", { style: { background: "var(--bg)", padding: "10px", borderRadius: "8px", maxHeight: "260px", overflow: "auto", fontSize: "12px" } }, trLines(r.report))),
-      [button("Druck-Assistent öffnen", () => { close(); showAssistant(); }, { icon: "layers" }), button("OK", () => close(), { cls: "primary" })]);
+      [button("Slicer und AMS …", () => { close(); slicerSetup(); }, { icon: "layers" }),
+        button("Druck-Assistent öffnen", () => { close(); showAssistant(); }, { icon: "layers" }), button("OK", () => close(), { cls: "primary" })]);
   } catch (e: any) { toast("Export fehlgeschlagen: " + e.message, "err"); }
   finally { if (!running) busy.classList.remove("on"); }
+}
+
+/** Hinweise im Export-Dialog: was in der 3MF steht und was im Slicer noch zu tun ist. */
+function slicerNotes(info: ThreeMfInfo): HTMLElement[] {
+  const base = state.settings.base_layer_mm.toFixed(2), step = state.settings.layer_height_mm.toFixed(2);
+  const hint = (text: string, warn = false) => h("p", { class: "hint" + (warn ? " warn" : "") }, text);
+  if (info.target === "prusa") return [hint(
+    (info.changes === "m600" ? `PrusaSlicer: die .3mf öffnen. Die ${info.changeCount} Farbwechsel (M600) stehen dann im Schicht-Regler. ` : "PrusaSlicer: die .3mf öffnen. ") +
+    `Im Druckprofil die erste Schicht auf ${base} mm, die Schichthöhe auf ${step} mm und die Füllung auf 100 % stellen.`)];
+  const out: HTMLElement[] = [];
+  const tpl = slicer.template;
+  if (!info.project) {
+    out.push(hint("Ohne Vorlage enthält die .3mf nur das Modell. Bambu Studio und OrcaSlicer übernehmen Filamentwechsel und Schichthöhen nur aus einem vollständigen Projekt. Unter „Slicer und AMS“ einmal ein Projekt aus deinem Slicer als Vorlage wählen, dann stehen Drucker, Filamentfarben, Schichthöhen und Wechsel in der Datei.", true),
+      hint(`Bis dahin im Slicer von Hand: erste Schicht ${base} mm, Schichthöhe ${step} mm, Füllung 100 %, Wechsel laut Liste unten.`));
+    return out;
+  }
+  out.push(hint(`${SLICER_TARGETS.bambu}: die .3mf als Projekt öffnen. Drucker und Prozess kommen aus deiner Vorlage (${tpl ? slicerName(tpl.app) : ""}), die erste Schicht (${base} mm), die Schichthöhe (${step} mm) und 100 % Füllung sind eingetragen.`));
+  if (info.changes === "ams") {
+    out.push(hint(`Alle ${info.changeCount} Filamentwechsel sind eingetragen, das AMS wechselt von selbst. Filamente im Projekt:`),
+      h("div", { style: { display: "grid", gap: "4px", margin: "0 0 8px" } }, ...info.slots.map((s) =>
+        h("div", { style: { display: "flex", gap: "8px", alignItems: "center" } },
+          h("div", { class: "swatch", style: { background: s.filament.color, width: "16px", height: "16px" } }),
+          h("span", null, `Platz ${s.slot}`), h("span", { "data-notr": true }, tr(filamentLabel(s.filament))),
+          s.type && s.type.toLowerCase() !== s.filament.material.trim().toLowerCase()
+            ? h("span", { class: "hint warn" }, `Vorlage: ${s.type}, Filament: ${s.filament.material}`) : ""))),
+      hint("Vor dem Druck im Slicer prüfen: Das Material jedes Platzes stammt aus der Vorlage und muss zu deinen Rollen passen. Die Spülmengen (im Slicer „Reinigungsvolumen“) sind geschätzt; dort lassen sie sich neu berechnen."));
+  } else if (info.changes === "pause") {
+    out.push(hint(`Vor jedem der ${info.changeCount} Wechsel steht eine Pause. Der Drucker hält an, du wechselst das Filament von Hand und setzt den Druck fort. Welche Farbe wann kommt, zeigt der Druck-Assistent.`));
+  } else if (info.reason === "too_many") {
+    out.push(hint(`Der Stapel braucht ${info.slots.length} verschiedene Filamente, die Vorlage hat ${info.available}. Die .3mf enthält deshalb keine Filamentwechsel. Abhilfe: weniger Filamente nehmen, eine Vorlage mit mehr Filamenten speichern oder unter „Slicer und AMS“ auf Pausen umstellen.`, true));
+  }
+  return out;
 }
 
 async function exportOriginal() {
