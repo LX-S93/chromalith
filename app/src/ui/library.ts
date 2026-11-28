@@ -5,10 +5,13 @@ import { button, clear, contextMenu, h, modal, toast, confirmDialog } from "./do
 import { filesFromDrop, findLibraryFolders, importFiles, pickFilesBrowser, pickFolderDesktop, readFolder } from "./importer";
 import { isTauri, store } from "../platform";
 import { openSpoolman } from "./spoolman";
+import { openTdCalibration } from "./tdcal";
 
 export interface LibraryHost {
   library: Filament[];
   saveLibrary(): void;
+  /** TD-Kalibrierung für ein Filament der Bibliothek (übernimmt das Ergebnis selbst) */
+  measureTd?(f: Filament | null): Promise<void>;
 }
 
 export function editFilament(f: Filament | null): Promise<Filament | null> {
@@ -21,12 +24,16 @@ export function editFilament(f: Filament | null): Promise<Filament | null> {
     const hex = h("input", { type: "text", value: cur.color, style: { width: "100px" } });
     color.addEventListener("input", () => (hex.value = color.value));
     hex.addEventListener("change", () => { if (/^#[0-9a-f]{6}$/i.test(hex.value)) color.value = hex.value; });
-    const td = h("input", { type: "number", value: cur.td, step: 0.1, min: 0.1, max: 100 });
+    const td = h("input", { type: "number", value: cur.td, step: 0.05, min: 0.05, max: 100 });
+    const measure = button("Messen …", async () => {
+      const r = await openTdCalibration({ ...cur, brand: brand.value.trim(), name: name.value.trim(), color: color.value, td: Number(td.value) || cur.td }, true);
+      if (r) td.value = String(r.td);
+    }, { cls: "small", title: "TD mit einer gedruckten Stufentreppe bestimmen" });
     const owned = h("input", { type: "checkbox", checked: cur.owned });
     const form = h("div", { class: "form-grid" },
       "Marke", brand, "Name", name, "Material", material,
       "Farbe", h("div", { style: { display: "flex", gap: "8px" } }, color, hex),
-      h("span", { title: "Transmissions-Distanz: Schichtdicke in mm, ab der das Filament fast deckt." }, cur.td_estimated ? "TD (mm, geschätzt)" : "TD (mm)"), td,
+      h("span", { title: "Transmissions-Distanz: Schichtdicke in mm, ab der das Filament fast deckt." }, cur.td_estimated ? "TD (mm, geschätzt)" : "TD (mm)"), h("div", { style: { display: "flex", gap: "8px", alignItems: "center" } }, td, measure),
       "Vorhanden", h("label", { class: "switch", style: { justifyContent: "flex-start" } }, owned));
     let result: Filament | null = null;
     const close = modal(f ? "Filament bearbeiten" : "Neues Filament", form, [
@@ -72,6 +79,7 @@ export function openLibrary(host: LibraryHost, select = false): Promise<Filament
           current = f.id; refresh();
           contextMenu(e, [
             { label: "Bearbeiten …", icon: "edit", fn: () => edit(f) },
+            ...(host.measureTd ? [{ label: "TD messen …", icon: "contrast", fn: () => host.measureTd!(f).then(refresh) }] : []),
             { label: f.owned ? "Als nicht vorhanden markieren" : "Als vorhanden markieren", icon: "library", fn: () => { f.owned = !f.owned; host.saveLibrary(); refresh(); } },
             { label: "Duplizieren", icon: "plus", fn: () => { const c = makeFilament({ ...f, id: undefined, name: f.name + " (Kopie)" }); delete c.spoolman_id; host.library.splice(host.library.indexOf(f) + 1, 0, c); host.saveLibrary(); current = c.id; refresh(); } },
             null,
@@ -102,6 +110,7 @@ export function openLibrary(host: LibraryHost, select = false): Promise<Filament
       button("Neu", () => edit(null), { icon: "plus" }),
       button("Bearbeiten", () => { const f = host.library.find((x) => x.id === current); if (f) edit(f); }, { icon: "edit" }),
       button("Löschen", () => del(host.library.find((x) => x.id === current)), { icon: "trash" }),
+      ...(host.measureTd ? [button("TD messen", () => host.measureTd!(host.library.find((x) => x.id === current) ?? null).then(refresh), { icon: "contrast", title: "TD mit einer gedruckten Stufentreppe bestimmen: Foto im Gegenlicht auswerten oder die erste dunkle Stufe angeben" })] : []),
       button("Importieren", () => importDialog(host).then(refresh), { icon: "upload", title: "Filamente aus Bibliotheks- oder Set-Dateien (.json/.fss) oder einem ganzen Ordner übernehmen" }),
       button("Spoolman", () => openSpoolman(host).then(refresh), { icon: "download", title: "Rollen aus Spoolman als vorhandene Filamente übernehmen (Farbe, Material, Preis, Restgewicht)" }),
       button("Exportieren", () => saveFile("filamente.json", serializeLibrary(host.library), [{ name: "JSON", extensions: ["json"] }]), { icon: "download" }));

@@ -18,6 +18,7 @@ import { findLibraryFolders, importFiles, readFolder } from "./ui/importer";
 import { StackPanel } from "./ui/stack";
 import { openSuggest } from "./ui/suggest";
 import { loadSlicerPrefs, openSlicerSetup, slicerName, slotLimit } from "./ui/slicer";
+import { openTdCalibration, setTdCalHost } from "./ui/tdcal";
 import { IslandPanel } from "./ui/islands";
 import { assistantHtml, openAssistant, type AssistData } from "./ui/assistant";
 import { ImageView } from "./ui/view2d";
@@ -50,7 +51,7 @@ const activeStops = () => state.stops.filter((s) => !s.disabled);
 /** Ziel-Slicer, Vorlage und Art der Farbwechsel für die 3MF (gilt für alle Projekte) */
 const slicer = loadSlicerPrefs();
 const saveLibrary = () => store.set("library", library);
-const libHost = { library, saveLibrary };
+const libHost = { library, saveLibrary, measureTd };
 
 function defaultStops(): ColorStop[] {
   const byName = new Map(library.filter((f) => f.brand === "Generisch").map((f) => [f.name, f]));
@@ -128,6 +129,7 @@ menu.append(button(null, () => menu.classList.toggle("open"), { icon: "more", cl
     menuItem("Druck-Assistent (Farbwechsel) …", showAssistant, "", "layers"),
     menuItem("Slicer und AMS …", slicerSetup, "", "layers"),
     menuItem("Filament-Bibliothek …", () => openLibrary(libHost).then(() => refreshAnalysis()), "Strg+L", "library"),
+    menuItem("TD messen …", () => measureTd(null), "", "contrast"),
     menuItem("Spoolman verbinden …", () => openSpoolman(libHost).then(() => refreshAnalysis()), "", "download"),
     menuItem("Nach Updates suchen …", () => checkForUpdate(VERSION, true, () => state.dirty && !!state.image, () => saveProject(false)), "", "download"),
     menuItem("Sprache / Language …", chooseLanguage, "", "edit"),
@@ -463,6 +465,11 @@ const stack = new StackPanel({
   pick: async () => (await openLibrary(libHost, true))[0] ?? null,
   edit: (f) => editFilament({ ...f }),
   saveSet: () => saveFile("set.json", serializeLibrary(state.stops.map((s) => s.filament)), [{ name: "Filament-Set", extensions: ["json"] }]),
+});
+setTdCalHost({
+  layers: () => ({ first: state.settings.base_layer_mm, layer: state.settings.layer_height_mm }),
+  pick: async () => (await openLibrary(libHost, true))[0] ?? null,
+  slicer: () => ({ target: slicer.target, template: slicer.template, changeMode: slicer.changeMode }),
 });
 
 // Statuszeile
@@ -996,6 +1003,26 @@ function slicerNotes(info: ThreeMfInfo): HTMLElement[] {
     out.push(hint(`Der Stapel braucht ${info.slots.length} verschiedene Filamente, die Vorlage hat ${info.available}. Die .3mf enthält deshalb keine Filamentwechsel. Abhilfe: weniger Filamente nehmen, eine Vorlage mit mehr Filamenten speichern oder unter „Slicer und AMS“ auf Pausen umstellen.`, true));
   }
   return out;
+}
+
+/** TD-Kalibrierung öffnen und das Ergebnis in Bibliothek, Stapel und Lithophanie übernehmen. */
+async function measureTd(f: Filament | null) {
+  const r = await openTdCalibration(f);
+  if (!r?.filament) return;
+  const key = filamentKey(r.filament), same = (x: Filament) => x.id === r.filament!.id || filamentKey(x) === key;
+  const set = (x: Filament) => { x.td = r.td; delete x.td_estimated; };
+  const inLib = library.filter(same);
+  inLib.forEach(set);
+  if (inLib.length) saveLibrary();
+  const inStack = state.stops.filter((s) => same(s.filament));
+  inStack.forEach((s) => set(s.filament));
+  if (lithoView.filament.name === filamentLabel(r.filament) && lithoView.filament.color.toLowerCase() === r.filament.color.toLowerCase()) {
+    lithoView.filament = { ...lithoView.filament, td: r.td }; store.set("lithoFilament", lithoView.filament); syncLitho();
+  }
+  if (inStack.length) { stack.render(); markDirty(); }
+  if (state.image) schedule(0);
+  refreshAnalysis();
+  toast(`TD für „${filamentLabel(r.filament)}“ auf ${num(r.td, 2)} mm gesetzt.`, "ok");
 }
 
 async function exportOriginal() {

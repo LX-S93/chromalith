@@ -56,6 +56,8 @@ by size and SHA-256 before it is started.
 - The stack shows the AMS slot of every filament and warns when it needs more filaments than the AMS has slots
 - Consumption, weight and cost per filament
 - Filament library with import, plus optional read-only sync with [Spoolman](https://github.com/Donkie/Spoolman)
+- **TD calibration:** print a step wedge, photograph it backlit and let Chromalith derive the TD, or state the
+  first step that no light shines through
 - **Lithophanes:** flat, curved, cylinder (lampshade) and sphere (ornament with hanging loop and optional
   screw cap for the light); place, scale and repeat the image on the body without distortion; light simulation
   with a visible lamp and different light sources; STL export
@@ -109,6 +111,24 @@ practically no light through. Small TD = covers quickly (e.g. black), large TD =
 - A small starter library with **rough estimates** is included. For good results enter the TD of your own filaments.
 - **⋯ → Filament library → Import** reads Chromalith files as well as library and set files in the common
   JSON schema (`Brand / Name / Type / Color / Transmissivity`).
+- **⋯ → Measure TD …** determines the TD of your own filament (see below).
+
+### Measuring the TD
+
+1. **Print the step wedge.** "Save step wedge …" writes a small strip (10 steps of 8 × 20 mm by default) as STL
+   and 3MF. The thinnest step is one first layer thick, every further step adds the chosen number of layers.
+   Print it in the filament you want to measure with 100% infill and exactly these layer heights. For
+   translucent filaments (white, yellow, transparent) use more layers per step.
+2. **Backlit photo.** Put the wedge on an evenly bright surface (a white image on a tablet or phone works well),
+   darken the room and take a photo straight from above, without flash and preferably without HDR. Load the photo
+   and drag the two markers to the centre of the thinnest and of the thickest step. Chromalith measures the
+   brightness of every step and fits the model `brightness ∝ exp(−ln(20)·t/TD)` to it. Lamp brightness and
+   exposure cancel out; overexposed steps and steps that no light passes through are left out automatically.
+3. **Or by hand.** Hold the wedge in front of a light and choose the first step that no light shines through.
+   The TD is taken as the thickness between this step and the one before.
+
+The result is a good guide, not a lab measurement: cameras and lights are never perfectly neutral. The photo
+is more precise than the estimate by eye, because it evaluates the whole curve.
 
 Preview colour model: layers are stacked bottom to top; a layer of thickness *t* covers
 `1 − exp(−ln(20)·t/TD)` (95 % at *t* = TD). This is an approximation – real prints differ depending on

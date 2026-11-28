@@ -2,6 +2,22 @@
 
 Versionen nach [SemVer](https://semver.org/lang/de/): MAJOR.MINOR.PATCH.
 
+## 0.28.0 – 2026-11-28
+
+- New: measure the TD of your own filaments (menu "⋯ → Measure TD …", also in the filament library and in "Edit filament").
+- Step wedge to print: "Save step wedge …" writes a small strip as STL and 3MF, by default 10 steps from one first layer upwards (0.20 to 0.92 mm with 0.20 / 0.08 mm layers). First layer, layer height, layers per step and number of steps are adjustable; with a slicer template the 3MF already contains the layer heights and 100% infill.
+- Backlit photo: load a photo of the wedge on a bright surface and drag two markers to the thinnest and the thickest step. Chromalith measures the brightness of every step and derives the TD from how fast it falls with thickness. Lamp brightness and exposure do not matter; overexposed steps and steps that no light passes through are left out, and a chart shows the readings and the fitted curve.
+- By hand: choose the first step that no light shines through.
+- The measured value is written to the filament in the library and to the same filament in the current stack and lithophane.
+
+<!-- de
+- Neu: Den TD der eigenen Filamente messen (Menü „⋯ → TD messen …“, außerdem in der Filament-Bibliothek und unter „Filament bearbeiten“).
+- Stufentreppe zum Drucken: „Treppe speichern …“ schreibt einen kleinen Streifen als STL und 3MF, standardmäßig 10 Stufen ab einer ersten Schicht (0,20 bis 0,92 mm bei 0,20 / 0,08 mm Schichten). Erste Schicht, Schichthöhe, Schichten je Stufe und Anzahl der Stufen sind einstellbar; mit einer Slicer-Vorlage stehen Schichthöhen und 100 % Füllung schon in der 3MF.
+- Foto im Gegenlicht: Ein Foto der Treppe auf einer hellen Fläche laden und zwei Marken auf die dünnste und die dickste Stufe ziehen. Chromalith misst die Helligkeit jeder Stufe und leitet den TD daraus ab, wie schnell sie mit der Dicke abfällt. Helligkeit der Lampe und Belichtung spielen keine Rolle; überbelichtete Stufen und Stufen, durch die kein Licht mehr kommt, werden weggelassen, und ein Diagramm zeigt Messwerte und angepasste Kurve.
+- Von Hand: die erste Stufe wählen, durch die kein Licht mehr scheint.
+- Der gemessene Wert wird beim Filament in der Bibliothek eingetragen und beim selben Filament im aktuellen Stapel und in der Lithophanie.
+-->
+
 ## 0.27.0 – 2026-11-28
 
 - 3MF export for Bambu Studio / OrcaSlicer with AMS: the file is now a complete project. The slicer opens it with your printer and process, the colours of the stack on the filament slots, the first layer and layer height, 100% infill and a filament change at every colour change, so the AMS swaps on its own and nothing has to be typed in from the colour change list.

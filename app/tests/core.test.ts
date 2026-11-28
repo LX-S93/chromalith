@@ -713,3 +713,94 @@ describe("Lithophanie nutzt nur ihre eigenen Einstellungen", () => {
     expect(Array.from(b.t)).toEqual(Array.from(a.t));
   });
 });
+
+import { DEFAULT_STAIR, cleanStair, fitTd, linearToSrgb, roundTd, sampleStair, stairHeightMap, stairThicknesses, tdFromDarkStep, STAIR_STEP_MM, STAIR_WIDTH_MM, type StairSpec } from "../src/core";
+
+/** Foto einer Treppe im Gegenlicht nachbauen: Stufen nebeneinander, Helligkeit nach dem Modell, dazu Streulicht. */
+function stairPhoto(spec: StairSpec, td: number, o: { light?: number; black?: number; reverse?: boolean; tint?: [number, number, number] } = {}) {
+  const sw = 40, hgt = 60, pad = 30, w = spec.count * sw + 2 * pad, h = hgt + 2 * pad;
+  const data = new Uint8ClampedArray(w * h * 4).fill(255);
+  const t = stairThicknesses(spec), tint = o.tint ?? [1, 1, 1];
+  for (let i = 0; i < spec.count; i++) {
+    const lum = Math.min(1, (o.light ?? 0.8) * Math.exp((-Math.log(20) * t[i]) / td) + (o.black ?? 0));
+    const col = o.reverse ? spec.count - 1 - i : i;
+    for (let y = pad; y < pad + hgt; y++) for (let x = pad + col * sw; x < pad + (col + 1) * sw; x++) {
+      const p = (y * w + x) * 4;
+      for (let c = 0; c < 3; c++) data[p + c] = Math.round(255 * linearToSrgb(Math.min(1, lum * tint[c])));
+    }
+  }
+  const cy = pad + hgt / 2, x0 = pad + sw / 2, x1 = pad + (spec.count - 0.5) * sw;
+  return { img: { data, width: w, height: h }, a: [x0, cy] as [number, number], b: [x1, cy] as [number, number] };
+}
+
+describe("TD-Kalibrierung", () => {
+  it("Treppe: Dicken, Höhenkarte und druckbares Netz", () => {
+    expect(stairThicknesses(DEFAULT_STAIR)).toEqual([0.2, 0.28, 0.36, 0.44, 0.52, 0.6, 0.68, 0.76, 0.84, 0.92]);
+    expect(stairThicknesses({ first: 0.08, layer: 0.08, perStep: 1, count: 10 })[9]).toBe(0.8);
+    expect(cleanStair({ first: 9, layer: NaN, perStep: 2.4, count: 99 })).toEqual({ first: 0.6, layer: 0.08, perStep: 2, count: 20 });
+    const hm = stairHeightMap(DEFAULT_STAIR);
+    expect(sizeMm(hm)).toEqual([10 * STAIR_STEP_MM, STAIR_WIDTH_MM]);
+    expect(hm.heights[0]).toBeCloseTo(0.2); expect(hm.heights[hm.width - 1]).toBeCloseTo(0.92);
+    expect(layerCount(hm)).toBe(10);
+    const m = heightmapToMesh(hm);
+    expect(watertight(m.faces)).toBe(true);
+    const ideal = stairThicknesses(DEFAULT_STAIR).reduce((p, q) => p + q, 0) * STAIR_STEP_MM * STAIR_WIDTH_MM;
+    expect(Math.abs(meshVolume(m) - ideal) / ideal).toBeLessThan(0.02);
+  });
+
+  it("Foto: TD aus dem Helligkeitsabfall, unabhängig von Lampe und Belichtung", () => {
+    const t = stairThicknesses(DEFAULT_STAIR);
+    for (const td of [0.6, 1.4, 3]) for (const light of [0.3, 0.9]) {
+      const p = stairPhoto(DEFAULT_STAIR, td, { light });
+      const fit = fitTd(t, sampleStair(p.img, p.a, p.b, DEFAULT_STAIR.count));
+      expect(fit.ok).toBe(true);
+      expect(Math.abs(fit.td - td) / td).toBeLessThan(0.05);
+      expect(fit.r2).toBeGreaterThan(0.98);
+      expect(fit.reversed).toBe(false);
+    }
+  });
+
+  it("Foto: vertauschte Marken, farbiges Filament und überbelichtete Stufen", () => {
+    const t = stairThicknesses(DEFAULT_STAIR);
+    const rev = stairPhoto(DEFAULT_STAIR, 1.2, { reverse: true });
+    const f1 = fitTd(t, sampleStair(rev.img, rev.a, rev.b, 10));
+    expect(f1.reversed).toBe(true); expect(Math.abs(f1.td - 1.2)).toBeLessThan(0.08);
+    const red = stairPhoto(DEFAULT_STAIR, 2, { tint: [1, 0.25, 0.2] });
+    expect(Math.abs(fitTd(t, sampleStair(red.img, red.a, red.b, 10)).td - 2)).toBeLessThan(0.15);
+    // sehr helle Lampe: die dünnsten Stufen laufen ins Weiß und werden weggelassen
+    const hot = stairPhoto(DEFAULT_STAIR, 1.5, { light: 2.2 });
+    const f3 = fitTd(t, sampleStair(hot.img, hot.a, hot.b, 10));
+    expect(f3.saturated.slice(0, 2)).toEqual([true, true]);
+    expect(f3.used[0]).toBe(false);
+    expect(Math.abs(f3.td - 1.5) / 1.5).toBeLessThan(0.06);
+  });
+
+  it("Foto: Streulicht auf den dunklen Stufen verfälscht deckende Filamente nicht", () => {
+    const t = stairThicknesses(DEFAULT_STAIR);
+    const p = stairPhoto(DEFAULT_STAIR, 0.3, { light: 0.9, black: 0.012 });
+    const fit = fitTd(t, sampleStair(p.img, p.a, p.b, 10));
+    expect(fit.ok).toBe(true);
+    expect(fit.black).toBeGreaterThan(0.008);
+    expect(Math.abs(fit.td - 0.3)).toBeLessThan(0.05);
+    expect(fit.used.filter(Boolean).length).toBeLessThan(6);
+  });
+
+  it("Foto: ohne Abfall kein Ergebnis; sehr durchscheinend gilt als grobe Schätzung", () => {
+    const t = stairThicknesses(DEFAULT_STAIR);
+    const flat = fitTd(t, t.map(() => ({ lum: 0.5, saturated: 0, n: 100 })));
+    expect(flat.ok).toBe(false); expect(flat.problem).toBe("flat");
+    const few = fitTd(t, t.map(() => ({ lum: 1, saturated: 1, n: 100 })));
+    expect(few.ok).toBe(false); expect(few.problem).toBe("few");
+    const p = stairPhoto(DEFAULT_STAIR, 8);
+    const far = fitTd(t, sampleStair(p.img, p.a, p.b, 10));
+    expect(far.ok).toBe(true); expect(far.rough).toBe(true);
+    expect(Math.abs(far.td - 8) / 8).toBeLessThan(0.15);
+  });
+
+  it("von Hand: TD liegt zwischen der ersten dunklen Stufe und der davor", () => {
+    expect(tdFromDarkStep(DEFAULT_STAIR, 0)).toBe(0.2);
+    expect(tdFromDarkStep(DEFAULT_STAIR, 4)).toBe(0.48);
+    expect(tdFromDarkStep(DEFAULT_STAIR, 9)).toBe(0.88);
+    expect(roundTd(0.48)).toBe(0.5); expect(roundTd(2.34)).toBe(2.3);
+  });
+});
